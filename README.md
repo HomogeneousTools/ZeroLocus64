@@ -1,5 +1,7 @@
 # ZeroLocus64
 
+[![Tests](https://github.com/HomogeneousTools/ZeroLocus64/actions/workflows/CI.yml/badge.svg)](https://github.com/HomogeneousTools/ZeroLocus64/actions/workflows/CI.yml)
+
 ZeroLocus64 is a compact, canonical encoding for zero loci of completely reducible vector bundles on partial flag varieties. This repository contains the v1 format specification together with independent Python and Julia reference implementations.
 
 The canonical format definition is [specification.md](specification.md). Treat that document as the source of truth for the v1 wire format, canonicalization rules, and worked examples.
