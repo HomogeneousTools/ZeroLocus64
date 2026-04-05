@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zerolocus64"
+version = "1.0.0"
+description = "Reference Python implementation of the ZeroLocus64 v1 encoding format"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Pieter Belmans", email = "pieterbelmans@gmail.com" }]
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
