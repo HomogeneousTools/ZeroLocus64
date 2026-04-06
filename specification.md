@@ -4,13 +4,6 @@
 
 This document defines Version 1 of the ZeroLocus64 encoding format for zero loci of completely reducible vector bundles on partial flag varieties. It is intended to be read as an RFC-like specification for the wire format and canonicalization rules.
 
-The reference implementations of the v1 format are:
-
-- [python/src/zerolocus64/__init__.py](python/src/zerolocus64/__init__.py)
-- [julia/src/ZeroLocus64.jl](julia/src/ZeroLocus64.jl)
-
-Tracked regression examples live in [examples.json](examples.json).
-
 ## 1. Conventions
 
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are to be interpreted in their ordinary specification sense.
@@ -280,7 +273,15 @@ For `P^1 x P^1`, the bundle `O(1,0) \oplus O(0,1)` has row encodings `22` and `2
 
 ## 12. Public reference API
 
-Both reference implementations expose the same conceptual operations:
+The reference implementations of the v1 format are:
+
+- [python/src/zerolocus64/](python/)
+- [julia/src/](julia/)
+- [javascript/src/](javascript/)
+
+Tracked regression examples live in [examples.json](examples.json).
+
+All three reference implementations expose the same conceptual operations:
 
 - `base64url_encode(data)`
 - `base64url_decode(text)`
@@ -288,4 +289,4 @@ Both reference implementations expose the same conceptual operations:
 - `encode_label(factors, summands)`
 - `decode_label(label)`
 
-Both also expose a `Factor` type representing one irreducible Dynkin factor.
+All three also expose a `Factor` type representing one irreducible Dynkin factor.
