@@ -193,3 +193,28 @@ end
     assert_decode_error("11.2", "summand truncated")
     assert_decode_error("30.21.", "invalid bundle base digit")
 end
+
+@testset "Non-Canonical Labels" begin
+    assert_decode_error("201.25", "not in canonical form")
+    assert_decode_error("1.2120", "not in canonical form")
+    assert_decode_error("11.2221", "not in canonical form")
+
+    @test decode_label("120.26") isa Tuple
+    @test decode_label("1.2021") isa Tuple
+    @test decode_label("11.2122") isa Tuple
+end
+
+@testset "is_canonical" begin
+    @test is_canonical("1") == true
+    @test is_canonical("1.21") == true
+    @test is_canonical("11.2122") == true
+    @test is_canonical("30.24") == true
+
+    @test is_canonical("201.25") == false
+    @test is_canonical("1.2120") == false
+    @test is_canonical("11.2221") == false
+
+    @test is_canonical("") == false
+    @test is_canonical(".21") == false
+    @test is_canonical("0") == false
+end

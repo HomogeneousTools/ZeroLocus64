@@ -13,6 +13,7 @@ from zerolocus64 import (
     canonicalize,
     decode_label,
     encode_label,
+    is_canonical,
 )
 
 
@@ -145,3 +146,36 @@ def test_curated_canonicalization_cases_match_their_expected_labels(
     assert (
         encode_label(list(reversed(factors)), list(reversed(summands))) == case["label"]
     )
+
+
+@pytest.mark.parametrize(
+    ("label", "canonical"),
+    [
+        ("201.25", "120.26"),
+        ("1.2120", "1.2021"),
+        ("11.2221", "11.2122"),
+    ],
+)
+def test_noncanonical_labels_are_rejected(label: str, canonical: str) -> None:
+    with pytest.raises(ValueError, match="not in canonical form"):
+        decode_label(label)
+    assert decode_label(canonical) is not None
+
+
+def test_is_canonical_on_valid_labels() -> None:
+    assert is_canonical("1") is True
+    assert is_canonical("1.21") is True
+    assert is_canonical("11.2122") is True
+    assert is_canonical("30.24") is True
+
+
+def test_is_canonical_on_noncanonical_labels() -> None:
+    assert is_canonical("201.25") is False
+    assert is_canonical("1.2120") is False
+    assert is_canonical("11.2221") is False
+
+
+def test_is_canonical_on_invalid_labels() -> None:
+    assert is_canonical("") is False
+    assert is_canonical(".21") is False
+    assert is_canonical("0") is False

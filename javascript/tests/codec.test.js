@@ -11,7 +11,8 @@ import {
   base64urlEncode,
   canonicalize,
   decodeLabel,
-  encodeLabel
+  encodeLabel,
+  isCanonical
 } from "../src/index.js";
 import {
   factorsFromCase,
@@ -143,4 +144,37 @@ test("decode results can be normalized against explicit factors", () => {
     normalizeDecoded(decodeLabel(exampleCase.label)),
     normalizeExpected(factors, exampleCase.summands)
   );
+});
+
+for (const [label, canonical] of [
+  ["201.25", "120.26"],
+  ["1.2120", "1.2021"],
+  ["11.2221", "11.2122"]
+]) {
+  test(`non-canonical label rejected: ${label}`, () => {
+    assert.throws(
+      () => decodeLabel(label),
+      (error) => error instanceof Error && error.message.includes("not in canonical form")
+    );
+    assert.ok(decodeLabel(canonical));
+  });
+}
+
+test("isCanonical returns true for valid canonical labels", () => {
+  assert.equal(isCanonical("1"), true);
+  assert.equal(isCanonical("1.21"), true);
+  assert.equal(isCanonical("11.2122"), true);
+  assert.equal(isCanonical("30.24"), true);
+});
+
+test("isCanonical returns false for non-canonical labels", () => {
+  assert.equal(isCanonical("201.25"), false);
+  assert.equal(isCanonical("1.2120"), false);
+  assert.equal(isCanonical("11.2221"), false);
+});
+
+test("isCanonical returns false for invalid labels", () => {
+  assert.equal(isCanonical(""), false);
+  assert.equal(isCanonical(".21"), false);
+  assert.equal(isCanonical("0"), false);
 });
