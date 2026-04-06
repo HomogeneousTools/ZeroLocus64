@@ -195,7 +195,9 @@ $$
 B = \max(2, 1 + \max_j d_j)
 $$
 
-and the packed value
+The lower bound of 2 ensures that base-$B$ representation remains non-degenerate: in base 1, every integer maps to the digit 0 regardless of its value, making the coefficient vector unrecoverable.
+
+The packed value is
 
 $$
 v = \sum_{j=0}^{W-1} d_j B^{W-1-j}.
