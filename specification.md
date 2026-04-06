@@ -264,9 +264,11 @@ An implementation MUST reject at least the following malformed conditions:
 - truncated escaped rank digits;
 - truncated mask digits;
 - a decoded mask outside the valid range `1 <= mask < 2^rank`;
+- a factor with Dynkin rank exceeding 64;
 - a bundle base digit outside the range `2..63`;
 - a truncated summand field;
-- a packed summand value that exceeds the valid range for its width.
+- a packed summand value that exceeds the valid range for its width;
+- a label that is not in canonical form (re-encoding the decoded data does not reproduce the input).
 
 ## 11. Worked examples
 
