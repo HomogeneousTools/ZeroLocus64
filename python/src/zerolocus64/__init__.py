@@ -309,12 +309,8 @@ def encode_label(factors: list[Factor], summands: list[list[list[int]]]) -> str:
     return ambient_text + SEP + bundle_text
 
 
-def decode_label(label: str) -> tuple[list[Factor], list[list[list[int]]]]:
-    """Decode a ZeroLocus64 label into ``(factors, summands)``.
-
-    The returned ``summands`` value is a list of bundle rows, where each row
-    stores one weight vector per ambient factor.
-    """
+def _decode_label_raw(label: str) -> tuple[list[Factor], list[list[list[int]]]]:
+    """Decode without canonical validation."""
 
     ambient_text, separator, bundle_text = label.partition(SEP)
     if not ambient_text:
@@ -362,6 +358,31 @@ def decode_label(label: str) -> tuple[list[Factor], list[list[list[int]]]]:
     return factors, summands
 
 
+def decode_label(label: str) -> tuple[list[Factor], list[list[list[int]]]]:
+    """Decode a ZeroLocus64 label into ``(factors, summands)``.
+
+    The returned ``summands`` value is a list of bundle rows, where each row
+    stores one weight vector per ambient factor.
+
+    Raises ``ValueError`` if the label is not in canonical form.
+    """
+
+    factors, summands = _decode_label_raw(label)
+    if encode_label(factors, summands) != label:
+        raise ValueError("label is not in canonical form")
+    return factors, summands
+
+
+def is_canonical(label: str) -> bool:
+    """Return ``True`` if *label* is a valid canonical ZeroLocus64 label."""
+
+    try:
+        factors, summands = _decode_label_raw(label)
+        return encode_label(factors, summands) == label
+    except ValueError:
+        return False
+
+
 __all__ = [
     "BASE64",
     "BASE64_INDEX",
@@ -380,4 +401,5 @@ __all__ = [
     "canonicalize",
     "decode_label",
     "encode_label",
+    "is_canonical",
 ]

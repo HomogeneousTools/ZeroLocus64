@@ -20,6 +20,7 @@ export Factor,
     canonicalize,
     decode_label,
     encode_label,
+    is_canonical,
     marked_nodes
 
 const STANDARD_NAME = "ZeroLocus64"
@@ -30,6 +31,17 @@ const BASE64_INDEX =
     Dict(character => value - 1 for (value, character) in enumerate(BASE64_CHARS))
 const TO_LABEL_ALPHABET = Dict(zip(collect(RFC4648_BASE64URL), BASE64_CHARS))
 const FROM_LABEL_ALPHABET = Dict(zip(BASE64_CHARS, collect(RFC4648_BASE64URL)))
+
+function _build_translate_table(from::String, to::String)
+    table = Vector{UInt8}(0x00:0x7F)
+    for (f, t) in zip(codeunits(from), codeunits(to))
+        table[f+1] = t
+    end
+    return table
+end
+
+const _TO_LABEL_TABLE = _build_translate_table(RFC4648_BASE64URL, BASE64)
+const _FROM_LABEL_TABLE = _build_translate_table(BASE64, RFC4648_BASE64URL)
 
 const SEP = '.'
 const ESCAPE = BASE64_CHARS[1]
@@ -93,6 +105,15 @@ marked_nodes(factor::Factor) =
 translate_alphabet(text::AbstractString, mapping::AbstractDict{Char,Char}) =
     join(get(mapping, character, character) for character in text)
 
+function _translate_bytes(text::AbstractString, table::Vector{UInt8})
+    src = codeunits(text)
+    out = Vector{UInt8}(undef, length(src))
+    @inbounds for i in eachindex(src)
+        out[i] = table[src[i]+1]
+    end
+    return String(out)
+end
+
 """
     base64url_encode(data)
 
@@ -101,7 +122,7 @@ digit-first alphabet.
 """
 function base64url_encode(data)
     encoded = replace(base64encode(data), '+' => '-', '/' => '_')
-    return translate_alphabet(rstrip(encoded, '='), TO_LABEL_ALPHABET)
+    return _translate_bytes(rstrip(encoded, '='), _TO_LABEL_TABLE)
 end
 
 """
@@ -110,7 +131,7 @@ end
 Decode text written in the ZeroLocus64 digit-first alphabet back to raw bytes.
 """
 function base64url_decode(text::AbstractString)
-    standardized = translate_alphabet(text, FROM_LABEL_ALPHABET)
+    standardized = _translate_bytes(text, _FROM_LABEL_TABLE)
     canonical = replace(standardized, '-' => '+', '_' => '/')
     padding = repeat("=", (4 - length(standardized) % 4) % 4)
     return base64decode(canonical * padding)
@@ -358,8 +379,18 @@ Decode a ZeroLocus64 label into `(factors, summands)`.
 
 The returned `summands` value is a vector of bundle rows, where each row stores
 one weight vector per ambient factor.
+
+Throws `ArgumentError` if the label is not in canonical form.
 """
 function decode_label(label::AbstractString)
+    factors, summands = _decode_label_raw(label)
+    if encode_label(factors, summands) != label
+        throw(ArgumentError("label is not in canonical form"))
+    end
+    return factors, summands
+end
+
+function _decode_label_raw(label::AbstractString)
     ambient_text, separator, bundle_text = split_label(label)
     isempty(ambient_text) && throw(ArgumentError("ambient part must be non-empty"))
     separator &&
@@ -419,6 +450,22 @@ function split_label(label::AbstractString)
         separator_index == lastindex(label) ? "" :
         String(SubString(label, nextind(label, separator_index), lastindex(label)))
     return ambient_text, true, bundle_text
+end
+
+"""
+    is_canonical(label)
+
+Return `true` if `label` is a valid canonical ZeroLocus64 label.
+"""
+function is_canonical(label::AbstractString)
+    local factors, summands
+    try
+        factors, summands = _decode_label_raw(label)
+    catch e
+        e isa ArgumentError || rethrow()
+        return false
+    end
+    return encode_label(factors, summands) == label
 end
 
 end

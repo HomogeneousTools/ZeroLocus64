@@ -488,7 +488,7 @@ export function encodeLabel(factors, summands) {
   return ambientText + SEP + bundleText;
 }
 
-export function decodeLabel(label) {
+function decodeLabelRaw(label) {
   if (typeof label !== "string") {
     throw new TypeError("label must be a string");
   }
@@ -551,7 +551,25 @@ export function decodeLabel(label) {
   return [factors, summands];
 }
 
+export function decodeLabel(label) {
+  const [factors, summands] = decodeLabelRaw(label);
+  if (encodeLabel(factors, summands) !== label) {
+    throw new RangeError("label is not in canonical form");
+  }
+  return [factors, summands];
+}
+
+export function isCanonical(label) {
+  try {
+    const [factors, summands] = decodeLabelRaw(label);
+    return encodeLabel(factors, summands) === label;
+  } catch {
+    return false;
+  }
+}
+
 export const base64url_encode = base64urlEncode;
 export const base64url_decode = base64urlDecode;
 export const encode_label = encodeLabel;
 export const decode_label = decodeLabel;
+export const is_canonical = isCanonical;

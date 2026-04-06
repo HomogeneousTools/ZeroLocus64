@@ -86,7 +86,15 @@ The format uses these fixed-width fields in several places. The helper names `en
 
 Canonicalization is part of the format definition, not an optional implementation detail.
 
-To canonicalize an input `(factors, summands)`:
+### 6.1 Definition
+
+A label is **canonical** if and only if it uniquely minimizes the following ordered criteria among all labels representing the same mathematical object:
+
+1. The ambient factors are sorted by their encoded factor strings in ascending code-unit order.
+2. Among all permutations of factors within each maximal equal-factor block (a maximal run of consecutive factors with identical encoded strings), the chosen permutation minimizes the lexicographically sorted tuple of encoded summand row strings.
+3. The summand rows are sorted by their encoded strings in ascending code-unit order.
+
+**Uniqueness.** Encoding each factor and each summand row is deterministic once the factor order is fixed. The lexicographic minimum of a finite set of tuples is unique. Sorting the summand rows by their deterministic encodings produces a unique result. Therefore the canonical label for a given mathematical object is unique.
 
 1. sort the ambient factors by their encoded ambient factor strings;
 2. partition the sorted ambient factors into maximal equal-factor blocks;
@@ -97,6 +105,9 @@ To canonicalize an input `(factors, summands)`:
 7. sort the summand rows by their encoded row strings.
 
 There is no exhaustive search across distinct ambient factors. Only equal-factor blocks are permuted.
+### 6.5 Canonical validation
+
+A decoded label MUST be in canonical form. After decoding a label into `(factors, summands)`, an implementation MUST re-encode the result and verify that the re-encoded label matches the original input byte for byte. If the label is not canonical, the implementation MUST reject it.
 
 ## 7. Ambient encoding
 
