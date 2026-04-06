@@ -317,5 +317,6 @@ All three reference implementations expose the same conceptual operations:
 - `canonicalize(factors, summands)`
 - `encode_label(factors, summands)`
 - `decode_label(label)`
+- `is_canonical(label)`
 
 All three also expose a `Factor` type representing one irreducible Dynkin factor.
