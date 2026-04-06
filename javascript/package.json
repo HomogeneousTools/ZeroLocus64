@@ -1,0 +1,23 @@
+{
+  "name": "zerolocus64",
+  "version": "1.0.0",
+  "description": "Reference JavaScript implementation of the ZeroLocus64 v1 encoding format",
+  "type": "module",
+  "author": "Pieter Belmans <pieterbelmans@gmail.com>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "src"
+  ],
+  "exports": {
+    ".": "./src/index.js",
+    "./presentation": "./src/presentation.js"
+  },
+  "scripts": {
+    "build:site": "node ./scripts/build-pages.mjs",
+    "test": "node --test",
+    "site": "node ./scripts/serve-site.mjs"
+  }
+}

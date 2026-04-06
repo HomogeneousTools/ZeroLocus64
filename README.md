@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/HomogeneousTools/ZeroLocus64/actions/workflows/CI.yml/badge.svg)](https://github.com/HomogeneousTools/ZeroLocus64/actions/workflows/CI.yml)
 
-ZeroLocus64 is a compact, canonical encoding for zero loci of completely reducible vector bundles on partial flag varieties. This repository contains the v1 format specification together with independent Python and Julia reference implementations.
+ZeroLocus64 is a compact, canonical encoding for zero loci of completely reducible vector bundles on partial flag varieties. This repository contains the v1 format specification together with independent Python, Julia, and JavaScript reference implementations, plus a small browser-based decoder website.
 
 The canonical format definition is [specification.md](specification.md). Treat that document as the source of truth for the v1 wire format, canonicalization rules, and worked examples.
 
@@ -12,6 +12,8 @@ The canonical format definition is [specification.md](specification.md). Treat t
 - [examples.json](examples.json): tracked regression examples, combining hand-curated cases and corpus-derived cases in one file.
 - [python](python): Python package and pytest suite.
 - [julia](julia): Julia module and Julia test suite.
+- [javascript](javascript): JavaScript package, Node test suite, and website build or preview scripts.
+- [website](website): static two-page site for browsing the specification and decoding labels.
 
 ## Python
 
@@ -55,8 +57,35 @@ label = encode_label([Factor('A', 1, 1)], [[[1]]])
 @assert decode_label(label) == ([Factor('A', 1, 1)], [[[1]]])
 ```
 
+## JavaScript
+
+Install the local JavaScript package from the repository root:
+
+```text
+npm install ./javascript
+```
+
+Run the JavaScript tests:
+
+```text
+npm --prefix javascript test
+```
+
+The public JavaScript API is exposed from `zerolocus64`:
+
+```js
+import { Factor, decodeLabel, encodeLabel } from "zerolocus64";
+
+const label = encodeLabel([new Factor("A", 1, 1)], [[[1]]]);
+console.assert(label === "1.21");
+
+const [factors, summands] = decodeLabel(label);
+console.assert(factors[0].group === "A");
+console.assert(summands[0][0][0] === 1);
+```
+
 ## Design constraints
 
-- The Python and Julia implementations are independent reference implementations.
+- The Python, Julia, and JavaScript implementations are independent reference implementations.
 - Shared tracked vectors keep both languages aligned.
 - The repository never requires local-only artifacts for normal installation or testing.
