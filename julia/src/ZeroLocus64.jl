@@ -49,13 +49,14 @@ const TYPE_CHAR_INDEX =
     Dict(character => index for (index, character) in enumerate(TYPE_CHARS))
 
 valid_type_rank(group::Char, rank::Int) =
-    (group == 'A' && rank >= 1) ||
+    rank <= 64 &&
+    ((group == 'A' && rank >= 1) ||
     (group == 'B' && rank >= 2) ||
     (group == 'C' && rank >= 3) ||
     (group == 'D' && rank >= 4) ||
     (group == 'E' && rank in (6, 7, 8)) ||
     (group == 'F' && rank == 4) ||
-    (group == 'G' && rank == 2)
+    (group == 'G' && rank == 2))
 
 function validate_type_rank(group::Char, rank::Int)
     valid_type_rank(group, rank) ||

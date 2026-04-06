@@ -43,13 +43,16 @@ TYPE_CHAR_INDEX = {char: index for index, char in enumerate(TYPE_CHARS)}
 
 def _is_valid_type_rank(group: str, rank: int) -> bool:
     return (
-        (group == "A" and rank >= 1)
-        or (group == "B" and rank >= 2)
-        or (group == "C" and rank >= 3)
-        or (group == "D" and rank >= 4)
-        or (group == "E" and rank in {6, 7, 8})
-        or (group == "F" and rank == 4)
-        or (group == "G" and rank == 2)
+        rank <= 64
+        and (
+            (group == "A" and rank >= 1)
+            or (group == "B" and rank >= 2)
+            or (group == "C" and rank >= 3)
+            or (group == "D" and rank >= 4)
+            or (group == "E" and rank in {6, 7, 8})
+            or (group == "F" and rank == 4)
+            or (group == "G" and rank == 2)
+        )
     )
 
 

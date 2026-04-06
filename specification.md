@@ -33,6 +33,8 @@ One ambient factor is a triple `(group, rank, mask)` where:
 
 The marked parabolic nodes of a factor are therefore the 1-based node indices corresponding to the set bits of `mask`.
 
+The Dynkin rank of any factor MUST NOT exceed 64. Reference implementations store rank, mask, and highest-weight coefficients as signed 64-bit integers.
+
 When exactly one node is marked, the factor is a generalized Grassmannian. Ordinary Grassmannians are the type `A` examples with a single marked node.
 
 ### 3.2 Bundle summands

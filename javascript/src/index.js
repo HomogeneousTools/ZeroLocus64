@@ -154,13 +154,14 @@ export class Factor {
 
 export function isValidTypeRank(group, rank) {
   return (
-    (group === "A" && rank >= 1) ||
+    rank <= 64 &&
+    ((group === "A" && rank >= 1) ||
     (group === "B" && rank >= 2) ||
     (group === "C" && rank >= 3) ||
     (group === "D" && rank >= 4) ||
     (group === "E" && (rank === 6 || rank === 7 || rank === 8)) ||
     (group === "F" && rank === 4) ||
-    (group === "G" && rank === 2)
+    (group === "G" && rank === 2))
   );
 }
 
