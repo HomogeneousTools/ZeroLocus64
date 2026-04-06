@@ -204,7 +204,7 @@ export function base64urlDecode(text) {
     throw new TypeError("text must be a string");
   }
   if (text.length % 4 === 1) {
-    throw new RangeError("invalid Base64URL length");
+    throw new RangeError("invalid Base64URL length (RFC 4648 does not permit length \u2261 1 mod 4)");
   }
   const bytes = [];
   let buffer = 0n;
