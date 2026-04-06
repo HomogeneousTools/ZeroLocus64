@@ -14,7 +14,11 @@ export async function loadExamples() {
 }
 
 export function factorFromPayload(payload) {
-  return new Factor(String(payload.group), Number(payload.rank), BigInt(payload.mask));
+  return new Factor(
+    String(payload.group),
+    Number(payload.rank),
+    BigInt(payload.mask),
+  );
 }
 
 export function factorsFromCase(exampleCase) {
@@ -26,7 +30,7 @@ export function normalizeFactors(factors) {
     group: factor.group,
     rank: factor.rank,
     mask: factor.mask.toString(),
-    markedNodes: factor.markedNodes()
+    markedNodes: factor.markedNodes(),
   }));
 }
 
@@ -37,13 +41,13 @@ export function normalizeSummands(summands) {
 export function normalizeDecoded([factors, summands]) {
   return {
     factors: normalizeFactors(factors),
-    summands: normalizeSummands(summands)
+    summands: normalizeSummands(summands),
   };
 }
 
 export function normalizeExpected(factors, summands) {
   return {
     factors: normalizeFactors(factors),
-    summands: normalizeSummands(summands)
+    summands: normalizeSummands(summands),
   };
 }

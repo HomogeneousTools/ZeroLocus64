@@ -10,11 +10,15 @@ test("curated vectors round-trip", () => {
   for (const exampleCase of examplesData.curated_cases) {
     const factors = factorsFromCase(exampleCase);
     const summands = exampleCase.summands;
-    assert.equal(encodeLabel(factors, summands), exampleCase.label, exampleCase.name);
+    assert.equal(
+      encodeLabel(factors, summands),
+      exampleCase.label,
+      exampleCase.name,
+    );
     assert.deepEqual(
       normalizeDecoded(decodeLabel(exampleCase.label)),
       normalizeDecoded([factors, summands]),
-      exampleCase.name
+      exampleCase.name,
     );
   }
 });
@@ -28,7 +32,7 @@ test("curated vectors respect Dynkin classification", () => {
     const factors = factorsFromCase(exampleCase);
     assert.ok(
       factors.every((factor) => isValidTypeRank(factor.group, factor.rank)),
-      exampleCase.name
+      exampleCase.name,
     );
   }
 });
@@ -38,7 +42,7 @@ test("corpus vectors respect Dynkin classification", () => {
     const factors = factorsFromCase(exampleCase);
     assert.ok(
       factors.every((factor) => isValidTypeRank(factor.group, factor.rank)),
-      String(exampleCase.index)
+      String(exampleCase.index),
     );
   }
 });
@@ -47,11 +51,15 @@ test("full corpus round-trip", () => {
   for (const exampleCase of examplesData.corpus_cases) {
     const factors = factorsFromCase(exampleCase);
     const summands = exampleCase.summands;
-    assert.equal(encodeLabel(factors, summands), exampleCase.label, String(exampleCase.index));
+    assert.equal(
+      encodeLabel(factors, summands),
+      exampleCase.label,
+      String(exampleCase.index),
+    );
     assert.deepEqual(
       normalizeDecoded(decodeLabel(exampleCase.label)),
       normalizeDecoded([factors, summands]),
-      String(exampleCase.index)
+      String(exampleCase.index),
     );
   }
 });
@@ -63,7 +71,9 @@ test("corpus length fields match labels", () => {
 });
 
 test("corpus length statistics stay compact", () => {
-  const lengths = examplesData.corpus_cases.map((exampleCase) => exampleCase.length).sort((left, right) => left - right);
+  const lengths = examplesData.corpus_cases
+    .map((exampleCase) => exampleCase.length)
+    .sort((left, right) => left - right);
   const sum = lengths.reduce((total, value) => total + value, 0);
   const mean = sum / lengths.length;
   const median = lengths[Math.floor(lengths.length / 2)];

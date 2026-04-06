@@ -13,41 +13,91 @@ const DIST_ROOT = path.join(WEBSITE_ROOT, "dist");
 const PAGE_FILES = [
   ["index.html", "index.html"],
   ["index.html", "404.html"],
-  ["index.html", path.join("decode", "index.html")]
+  ["index.html", path.join("decode", "index.html")],
 ];
 
 const WEBSITE_FILES = [
   ["styles.css", "styles.css"],
   ["app.js", "app.js"],
-  ["typesetting.js", "typesetting.js"]
+  ["typesetting.js", "typesetting.js"],
 ];
 
 const STATIC_COPIES = [
-  [path.join(REPO_ROOT, "javascript", "src", "index.js"), path.join(DIST_ROOT, "assets", "index.js")],
-  [path.join(REPO_ROOT, "javascript", "src", "presentation.js"), path.join(DIST_ROOT, "assets", "presentation.js")]
+  [
+    path.join(REPO_ROOT, "javascript", "src", "index.js"),
+    path.join(DIST_ROOT, "assets", "index.js"),
+  ],
+  [
+    path.join(REPO_ROOT, "javascript", "src", "presentation.js"),
+    path.join(DIST_ROOT, "assets", "presentation.js"),
+  ],
 ];
 
 const STATIC_DIRECTORIES = [
-  [path.join(REPO_ROOT, "javascript", "node_modules", "lie-js", "src"), path.join(DIST_ROOT, "assets", "vendor", "lie-js")],
-  [path.join(REPO_ROOT, "javascript", "node_modules", "katex", "dist", "fonts"), path.join(DIST_ROOT, "assets", "vendor", "katex", "fonts")]
+  [
+    path.join(REPO_ROOT, "javascript", "node_modules", "lie-js", "src"),
+    path.join(DIST_ROOT, "assets", "vendor", "lie-js"),
+  ],
+  [
+    path.join(
+      REPO_ROOT,
+      "javascript",
+      "node_modules",
+      "katex",
+      "dist",
+      "fonts",
+    ),
+    path.join(DIST_ROOT, "assets", "vendor", "katex", "fonts"),
+  ],
 ];
 
 const STATIC_VENDOR_FILES = [
-  [path.join(REPO_ROOT, "javascript", "node_modules", "katex", "dist", "katex.mjs"), path.join(DIST_ROOT, "assets", "vendor", "katex", "katex.mjs")],
-  [path.join(REPO_ROOT, "javascript", "node_modules", "katex", "dist", "katex.min.css"), path.join(DIST_ROOT, "assets", "vendor", "katex", "katex.min.css")],
-  [path.join(REPO_ROOT, "javascript", "node_modules", "marked", "lib", "marked.esm.js"), path.join(DIST_ROOT, "assets", "vendor", "marked.esm.js")]
+  [
+    path.join(
+      REPO_ROOT,
+      "javascript",
+      "node_modules",
+      "katex",
+      "dist",
+      "katex.mjs",
+    ),
+    path.join(DIST_ROOT, "assets", "vendor", "katex", "katex.mjs"),
+  ],
+  [
+    path.join(
+      REPO_ROOT,
+      "javascript",
+      "node_modules",
+      "katex",
+      "dist",
+      "katex.min.css",
+    ),
+    path.join(DIST_ROOT, "assets", "vendor", "katex", "katex.min.css"),
+  ],
+  [
+    path.join(
+      REPO_ROOT,
+      "javascript",
+      "node_modules",
+      "marked",
+      "lib",
+      "marked.esm.js",
+    ),
+    path.join(DIST_ROOT, "assets", "vendor", "marked.esm.js"),
+  ],
 ];
 
 const SPEC_TEMPLATE = path.join(WEBSITE_ROOT, "specification.html");
 const SPEC_MARKDOWN = path.join(REPO_ROOT, "specification.md");
-const REPOSITORY_BLOB_BASE = "https://github.com/HomogeneousTools/ZeroLocus64/blob/main";
+const REPOSITORY_BLOB_BASE =
+  "https://github.com/HomogeneousTools/ZeroLocus64/blob/main";
 
 const KATEX_OPTIONS = {
   displayMode: false,
   output: "html",
   strict: "ignore",
   throwOnError: false,
-  trust: false
+  trust: false,
 };
 
 function escapeHtml(text) {
@@ -62,7 +112,7 @@ function escapeHtml(text) {
 function renderMath(latex, options = {}) {
   return katex.renderToString(String(latex).trim(), {
     ...KATEX_OPTIONS,
-    ...options
+    ...options,
   });
 }
 
@@ -92,12 +142,12 @@ marked.use({
         return {
           type: "blockMath",
           raw: match[0],
-          text: match[1].trim()
+          text: match[1].trim(),
         };
       },
       renderer(token) {
         return `<div class="math-block-wrap">${renderDisplayMath(token.text)}</div>`;
-      }
+      },
     },
     {
       name: "inlineMath",
@@ -114,14 +164,14 @@ marked.use({
         return {
           type: "inlineMath",
           raw: match[0],
-          text: match[1].trim()
+          text: match[1].trim(),
         };
       },
       renderer(token) {
         return renderInlineMath(token.text);
-      }
-    }
-  ]
+      },
+    },
+  ],
 });
 
 function slugify(text) {
@@ -153,36 +203,44 @@ function rewriteRepositoryLinks(html) {
 }
 
 function linkWorkedExampleLabels(html) {
-  return html.replace(/<td><code>([0-9A-Za-z._-]+)<\/code><\/td>/g, (_match, label) => {
-    const encodedLabel = encodeURIComponent(label);
-    return `<td><a class="example-link" href="decode/${encodedLabel}"><code>${escapeHtml(label)}</code></a></td>`;
-  });
+  return html.replace(
+    /<td><code>([0-9A-Za-z._-]+)<\/code><\/td>/g,
+    (_match, label) => {
+      const encodedLabel = encodeURIComponent(label);
+      return `<td><a class="example-link" href="decode/${encodedLabel}"><code>${escapeHtml(label)}</code></a></td>`;
+    },
+  );
 }
 
 function addHeadingIds(html) {
   const seen = new Map();
   const toc = [];
-  const content = html.replace(/<h([123])>([\s\S]*?)<\/h\1>/g, (_match, level, inner) => {
-    const text = stripHtml(inner);
-    const base = slugify(text) || "section";
-    const count = (seen.get(base) ?? 0) + 1;
-    seen.set(base, count);
-    const id = count === 1 ? base : `${base}-${count}`;
-    if (level === "2") {
-      toc.push(`<a class="toc-level-h2" href="specification#${id}">${escapeHtml(text)}</a>`);
-    }
-    return `<h${level} id="${id}">${inner}</h${level}>`;
-  });
+  const content = html.replace(
+    /<h([123])>([\s\S]*?)<\/h\1>/g,
+    (_match, level, inner) => {
+      const text = stripHtml(inner);
+      const base = slugify(text) || "section";
+      const count = (seen.get(base) ?? 0) + 1;
+      seen.set(base, count);
+      const id = count === 1 ? base : `${base}-${count}`;
+      if (level === "2") {
+        toc.push(
+          `<a class="toc-level-h2" href="specification#${id}">${escapeHtml(text)}</a>`,
+        );
+      }
+      return `<h${level} id="${id}">${inner}</h${level}>`;
+    },
+  );
   return { content, toc: toc.join("") };
 }
 
 async function renderSpecificationPage() {
   const [template, markdown] = await Promise.all([
     readFile(SPEC_TEMPLATE, "utf8"),
-    readFile(SPEC_MARKDOWN, "utf8")
+    readFile(SPEC_MARKDOWN, "utf8"),
   ]);
   const renderedMarkdown = linkWorkedExampleLabels(
-    rewriteRepositoryLinks(marked.parse(markdown, { async: false }))
+    rewriteRepositoryLinks(marked.parse(markdown, { async: false })),
   );
   const { content, toc } = addHeadingIds(renderedMarkdown);
   return template
@@ -192,20 +250,34 @@ async function renderSpecificationPage() {
 
 export async function buildPagesSite() {
   await rm(DIST_ROOT, { recursive: true, force: true });
-  await mkdir(path.join(DIST_ROOT, "assets", "vendor", "katex"), { recursive: true });
-  await mkdir(path.join(DIST_ROOT, "assets", "vendor", "lie-js"), { recursive: true });
+  await mkdir(path.join(DIST_ROOT, "assets", "vendor", "katex"), {
+    recursive: true,
+  });
+  await mkdir(path.join(DIST_ROOT, "assets", "vendor", "lie-js"), {
+    recursive: true,
+  });
   await mkdir(path.join(DIST_ROOT, "decode"), { recursive: true });
   await mkdir(path.join(DIST_ROOT, "specification"), { recursive: true });
 
   for (const [sourceName, targetName] of PAGE_FILES) {
-    await copyFile(path.join(WEBSITE_ROOT, sourceName), path.join(DIST_ROOT, targetName));
+    await copyFile(
+      path.join(WEBSITE_ROOT, sourceName),
+      path.join(DIST_ROOT, targetName),
+    );
   }
 
   for (const [sourceName, targetName] of WEBSITE_FILES) {
-    await copyFile(path.join(WEBSITE_ROOT, sourceName), path.join(DIST_ROOT, targetName));
+    await copyFile(
+      path.join(WEBSITE_ROOT, sourceName),
+      path.join(DIST_ROOT, targetName),
+    );
   }
 
-  await writeFile(path.join(DIST_ROOT, "specification", "index.html"), await renderSpecificationPage(), "utf8");
+  await writeFile(
+    path.join(DIST_ROOT, "specification", "index.html"),
+    await renderSpecificationPage(),
+    "utf8",
+  );
 
   for (const [sourcePath, targetPath] of STATIC_COPIES) {
     await copyFile(sourcePath, targetPath);

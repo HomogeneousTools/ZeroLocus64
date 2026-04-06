@@ -1,6 +1,8 @@
 export const STANDARD_NAME = "ZeroLocus64";
-export const RFC4648_BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-export const BASE64 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
+export const RFC4648_BASE64URL =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+export const BASE64 =
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
 export const SEP = ".";
 export const ESCAPE = BASE64[0];
 export const TYPE_ORDER = "ABCDEFG";
@@ -14,21 +16,25 @@ export const TYPE_TABLE = Object.freeze([
   ["E", 7],
   ["E", 8],
   ["F", 4],
-  ["G", 2]
+  ["G", 2],
 ]);
 
 export const TYPE_CHARS = BASE64.slice(1, 1 + TYPE_TABLE.length);
 
 export const BASE64_INDEX = Object.freeze(
-  Object.fromEntries(Array.from(BASE64, (character, value) => [character, value]))
+  Object.fromEntries(
+    Array.from(BASE64, (character, value) => [character, value]),
+  ),
 );
 
 export const TYPE_INDEX = new Map(
-  TYPE_TABLE.map(([group, rank], index) => [`${group}${rank}`, index])
+  TYPE_TABLE.map(([group, rank], index) => [`${group}${rank}`, index]),
 );
 
 export const TYPE_CHAR_INDEX = Object.freeze(
-  Object.fromEntries(Array.from(TYPE_CHARS, (character, index) => [character, index]))
+  Object.fromEntries(
+    Array.from(TYPE_CHARS, (character, index) => [character, index]),
+  ),
 );
 
 function toBigInt(value, name) {
@@ -88,7 +94,9 @@ function normalizeSummands(summands, factors) {
       if (!Array.isArray(weights)) {
         throw new RangeError("highest-weight entry must be an array");
       }
-      return weights.map((digit) => toNonNegativeSafeInteger(digit, "highest-weight digit"));
+      return weights.map((digit) =>
+        toNonNegativeSafeInteger(digit, "highest-weight digit"),
+      );
     });
   });
 }
@@ -156,12 +164,12 @@ export function isValidTypeRank(group, rank) {
   return (
     rank <= 64 &&
     ((group === "A" && rank >= 1) ||
-    (group === "B" && rank >= 2) ||
-    (group === "C" && rank >= 3) ||
-    (group === "D" && rank >= 4) ||
-    (group === "E" && (rank === 6 || rank === 7 || rank === 8)) ||
-    (group === "F" && rank === 4) ||
-    (group === "G" && rank === 2))
+      (group === "B" && rank >= 2) ||
+      (group === "C" && rank >= 3) ||
+      (group === "D" && rank >= 4) ||
+      (group === "E" && (rank === 6 || rank === 7 || rank === 8)) ||
+      (group === "F" && rank === 4) ||
+      (group === "G" && rank === 2))
   );
 }
 
@@ -173,7 +181,7 @@ export function validateTypeRank(group, rank) {
 
 function validateFactor(factor) {
   validateTypeRank(factor.group, factor.rank);
-  if (!(1n <= factor.mask && factor.mask < (1n << BigInt(factor.rank)))) {
+  if (!(1n <= factor.mask && factor.mask < 1n << BigInt(factor.rank))) {
     throw new RangeError("mask out of range");
   }
 }
@@ -204,7 +212,9 @@ export function base64urlDecode(text) {
     throw new TypeError("text must be a string");
   }
   if (text.length % 4 === 1) {
-    throw new RangeError("invalid Base64URL length (RFC 4648 does not permit length \u2261 1 mod 4)");
+    throw new RangeError(
+      "invalid Base64URL length (RFC 4648 does not permit length \u2261 1 mod 4)",
+    );
   }
   const bytes = [];
   let buffer = 0n;
@@ -335,7 +345,9 @@ function decodeFactor(text, position) {
   } else {
     const index = TYPE_CHAR_INDEX[leadCharacter];
     if (index === undefined) {
-      throw new RangeError(`unknown standard factor character ${JSON.stringify(leadCharacter)}`);
+      throw new RangeError(
+        `unknown standard factor character ${JSON.stringify(leadCharacter)}`,
+      );
     }
     [group, rank] = TYPE_TABLE[index];
     nextPosition = position + 1;
@@ -345,8 +357,9 @@ function decodeFactor(text, position) {
   if (end > text.length) {
     throw new RangeError("mask truncated");
   }
-  const mask = end > nextPosition ? decodeSextets(text.slice(nextPosition, end)) + 1n : 1n;
-  if (!(1n <= mask && mask < (1n << BigInt(rank)))) {
+  const mask =
+    end > nextPosition ? decodeSextets(text.slice(nextPosition, end)) + 1n : 1n;
+  if (!(1n <= mask && mask < 1n << BigInt(rank))) {
     throw new RangeError("mask out of range");
   }
   return [new Factor(group, rank, mask), end];
@@ -397,7 +410,7 @@ function encodeSummand(row, totalDynkinRank) {
 function reorder(order, factors, summands) {
   return [
     order.map((index) => factors[index]),
-    summands.map((row) => order.map((index) => row[index].slice()))
+    summands.map((row) => order.map((index) => row[index].slice())),
   ];
 }
 
@@ -413,9 +426,15 @@ function permutations(indices) {
       return;
     }
     for (let swapIndex = position; swapIndex < working.length; swapIndex += 1) {
-      [working[position], working[swapIndex]] = [working[swapIndex], working[position]];
+      [working[position], working[swapIndex]] = [
+        working[swapIndex],
+        working[position],
+      ];
       visit(position + 1);
-      [working[position], working[swapIndex]] = [working[swapIndex], working[position]];
+      [working[position], working[swapIndex]] = [
+        working[swapIndex],
+        working[position],
+      ];
     }
   }
   visit(0);
@@ -428,33 +447,59 @@ export function canonicalize(factors, summands) {
   const initialOrder = normalizedFactors
     .map((_, index) => index)
     .sort((left, right) =>
-      compareLexicographic(encodeFactor(normalizedFactors[left]), encodeFactor(normalizedFactors[right]))
+      compareLexicographic(
+        encodeFactor(normalizedFactors[left]),
+        encodeFactor(normalizedFactors[right]),
+      ),
     );
-  let [orderedFactors, orderedSummands] = reorder(initialOrder, normalizedFactors, normalizedSummands);
-  const totalDynkinRank = orderedFactors.reduce((sum, factor) => sum + factor.rank, 0);
+  let [orderedFactors, orderedSummands] = reorder(
+    initialOrder,
+    normalizedFactors,
+    normalizedSummands,
+  );
+  const totalDynkinRank = orderedFactors.reduce(
+    (sum, factor) => sum + factor.rank,
+    0,
+  );
   const factorCodes = orderedFactors.map((factor) => encodeFactor(factor));
   const equalFactorBlocks = [];
   for (let start = 0; start < orderedFactors.length; ) {
     let stop = start + 1;
-    while (stop < orderedFactors.length && factorCodes[stop] === factorCodes[start]) {
+    while (
+      stop < orderedFactors.length &&
+      factorCodes[stop] === factorCodes[start]
+    ) {
       stop += 1;
     }
-    const block = Array.from({ length: stop - start }, (_, offset) => start + offset);
+    const block = Array.from(
+      { length: stop - start },
+      (_, offset) => start + offset,
+    );
     equalFactorBlocks.push(block.length === 1 ? [block] : permutations(block));
     start = stop;
   }
 
   let bestSignature = null;
-  let bestOrder = Array.from({ length: orderedFactors.length }, (_, index) => index);
+  let bestOrder = Array.from(
+    { length: orderedFactors.length },
+    (_, index) => index,
+  );
   const currentOrder = [];
 
   function explore(blockIndex) {
     if (blockIndex === equalFactorBlocks.length) {
-      const [, trialSummands] = reorder(currentOrder, orderedFactors, orderedSummands);
+      const [, trialSummands] = reorder(
+        currentOrder,
+        orderedFactors,
+        orderedSummands,
+      );
       const signature = trialSummands
         .map((row) => encodeSummand(row, totalDynkinRank))
         .sort(compareLexicographic);
-      if (bestSignature === null || compareStringTuples(signature, bestSignature) < 0) {
+      if (
+        bestSignature === null ||
+        compareStringTuples(signature, bestSignature) < 0
+      ) {
         bestSignature = signature;
         bestOrder = currentOrder.slice();
       }
@@ -468,20 +513,32 @@ export function canonicalize(factors, summands) {
   }
 
   explore(0);
-  [orderedFactors, orderedSummands] = reorder(bestOrder, orderedFactors, orderedSummands);
+  [orderedFactors, orderedSummands] = reorder(
+    bestOrder,
+    orderedFactors,
+    orderedSummands,
+  );
   orderedSummands.sort((left, right) =>
-    compareLexicographic(encodeSummand(left, totalDynkinRank), encodeSummand(right, totalDynkinRank))
+    compareLexicographic(
+      encodeSummand(left, totalDynkinRank),
+      encodeSummand(right, totalDynkinRank),
+    ),
   );
   return [orderedFactors, orderedSummands];
 }
 
 export function encodeLabel(factors, summands) {
   const [canonicalFactors, canonicalSummands] = canonicalize(factors, summands);
-  const ambientText = canonicalFactors.map((factor) => encodeFactor(factor)).join("");
+  const ambientText = canonicalFactors
+    .map((factor) => encodeFactor(factor))
+    .join("");
   if (canonicalSummands.length === 0) {
     return ambientText;
   }
-  const totalDynkinRank = canonicalFactors.reduce((sum, factor) => sum + factor.rank, 0);
+  const totalDynkinRank = canonicalFactors.reduce(
+    (sum, factor) => sum + factor.rank,
+    0,
+  );
   const bundleText = canonicalSummands
     .map((row) => encodeSummand(row, totalDynkinRank))
     .join("");
@@ -493,7 +550,8 @@ function decodeLabelRaw(label) {
     throw new TypeError("label must be a string");
   }
   const separatorIndex = label.indexOf(SEP);
-  const ambientText = separatorIndex < 0 ? label : label.slice(0, separatorIndex);
+  const ambientText =
+    separatorIndex < 0 ? label : label.slice(0, separatorIndex);
   const bundleText = separatorIndex < 0 ? "" : label.slice(separatorIndex + 1);
   if (!ambientText) {
     throw new RangeError("ambient part must be non-empty");
@@ -520,7 +578,9 @@ function decodeLabelRaw(label) {
     const baseDigit = bundleText[position];
     const base = BASE64_INDEX[baseDigit];
     if (!(2 <= base && base < 64)) {
-      throw new RangeError(`invalid bundle base digit ${JSON.stringify(baseDigit)}`);
+      throw new RangeError(
+        `invalid bundle base digit ${JSON.stringify(baseDigit)}`,
+      );
     }
     const width = summandWidth(totalDynkinRank, base);
     const start = position + 1;

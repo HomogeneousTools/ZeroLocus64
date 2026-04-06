@@ -16,7 +16,7 @@ const MIME_TYPES = {
   ".json": "application/json; charset=utf-8",
   ".md": "text/markdown; charset=utf-8",
   ".mjs": "text/javascript; charset=utf-8",
-  ".svg": "image/svg+xml; charset=utf-8"
+  ".svg": "image/svg+xml; charset=utf-8",
 };
 
 function safeResolve(root, requestPath) {
@@ -52,7 +52,10 @@ async function resolveRequest(pathname) {
 
 const server = createServer(async (request, response) => {
   try {
-    const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+    const url = new URL(
+      request.url ?? "/",
+      `http://${request.headers.host ?? "localhost"}`,
+    );
     let filePath = await resolveRequest(url.pathname);
     const fileStats = await stat(filePath);
     if (fileStats.isDirectory()) {
@@ -60,11 +63,17 @@ const server = createServer(async (request, response) => {
     }
     const body = await readFile(filePath);
     response.writeHead(200, {
-      "Content-Type": MIME_TYPES[path.extname(filePath)] ?? "application/octet-stream"
+      "Content-Type":
+        MIME_TYPES[path.extname(filePath)] ?? "application/octet-stream",
     });
     response.end(body);
   } catch (error) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
       response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
       response.end("Not found\n");
       return;

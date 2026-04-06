@@ -12,13 +12,13 @@ import {
   canonicalize,
   decodeLabel,
   encodeLabel,
-  isCanonical
+  isCanonical,
 } from "../src/index.js";
 import {
   factorsFromCase,
   loadExamples,
   normalizeDecoded,
-  normalizeExpected
+  normalizeExpected,
 } from "./helpers.js";
 
 const examplesData = await loadExamples();
@@ -29,7 +29,12 @@ const SPEC_EXAMPLES = [
   ["P1 with O + O(1)", [new Factor("A", 1, 1)], [[[0]], [[1]]], "1.2021"],
   ["P3", [new Factor("A", 3, 1)], [], "30"],
   ["P3 with O(1)", [new Factor("A", 3, 1)], [[[1, 0, 0]]], "30.24"],
-  ["P3 split bundle", [new Factor("A", 3, 1)], [[[1, 0, 0]], [[0, 0, 1]]], "30.2124"],
+  [
+    "P3 split bundle",
+    [new Factor("A", 3, 1)],
+    [[[1, 0, 0]], [[0, 0, 1]]],
+    "30.2124",
+  ],
   ["Gr(2,4)", [new Factor("A", 3, 2)], [], "31"],
   ["Gr(3,6)", [new Factor("A", 5, 4)], [], "53"],
   ["Fl(1,3,4)", [new Factor("A", 3, 5)], [], "34"],
@@ -47,18 +52,26 @@ const SPEC_EXAMPLES = [
       new Factor("A", 1, 1),
       new Factor("A", 1, 1),
       new Factor("A", 1, 1),
-      new Factor("A", 1, 1)
+      new Factor("A", 1, 1),
     ],
     [[[1], [1], [1], [1], [1]]],
-    "11111.2V"
+    "11111.2V",
   ],
-  ["P1xP1 diagonal", [new Factor("A", 1, 1), new Factor("A", 1, 1)], [[[1], [1]]], "11.23"],
+  [
+    "P1xP1 diagonal",
+    [new Factor("A", 1, 1), new Factor("A", 1, 1)],
+    [[[1], [1]]],
+    "11.23",
+  ],
   [
     "P1xP1 split",
     [new Factor("A", 1, 1), new Factor("A", 1, 1)],
-    [[[1], [0]], [[0], [1]]],
-    "11.2122"
-  ]
+    [
+      [[1], [0]],
+      [[0], [1]],
+    ],
+    "11.2122",
+  ],
 ];
 
 test("public constants are stable", () => {
@@ -77,7 +90,10 @@ test("base64url helpers round-trip bytes", () => {
 });
 
 test("factor marked nodes report one-based positions", () => {
-  assert.deepEqual(new Factor("A", 5, (1 << 0) | (1 << 2) | (1 << 4)).markedNodes(), [1, 3, 5]);
+  assert.deepEqual(
+    new Factor("A", 5, (1 << 0) | (1 << 2) | (1 << 4)).markedNodes(),
+    [1, 3, 5],
+  );
 });
 
 for (const [name, factors, summands, label] of SPEC_EXAMPLES) {
@@ -85,14 +101,26 @@ for (const [name, factors, summands, label] of SPEC_EXAMPLES) {
     assert.equal(encodeLabel(factors, summands), label);
     assert.deepEqual(
       normalizeDecoded(decodeLabel(label)),
-      normalizeDecoded(canonicalize(factors, summands))
+      normalizeDecoded(canonicalize(factors, summands)),
     );
   });
 }
 
 test("encodeLabel canonicalizes factor order", () => {
-  assert.equal(encodeLabel([new Factor("A", 2, 1), new Factor("A", 1, 1)], [[[0, 1], [1]]]), "120.25");
-  assert.equal(encodeLabel([new Factor("A", 1, 1), new Factor("A", 2, 1)], [[[1], [0, 1]]]), "120.25");
+  assert.equal(
+    encodeLabel(
+      [new Factor("A", 2, 1), new Factor("A", 1, 1)],
+      [[[0, 1], [1]]],
+    ),
+    "120.25",
+  );
+  assert.equal(
+    encodeLabel(
+      [new Factor("A", 1, 1), new Factor("A", 2, 1)],
+      [[[1], [0, 1]]],
+    ),
+    "120.25",
+  );
 });
 
 test("curated cases cover a few dozen examples", () => {
@@ -100,7 +128,9 @@ test("curated cases cover a few dozen examples", () => {
 });
 
 test("curated case names are unique", () => {
-  const names = examplesData.curated_cases.map((exampleCase) => exampleCase.name);
+  const names = examplesData.curated_cases.map(
+    (exampleCase) => exampleCase.name,
+  );
   assert.equal(names.length, new Set(names).size);
 });
 
@@ -117,44 +147,51 @@ for (const [label, message] of [
   ["23", "mask out of range"],
   ["11.1", "invalid bundle base digit"],
   ["11.2", "summand truncated"],
-  ["30.21.", "invalid bundle base digit"]
+  ["30.21.", "invalid bundle base digit"],
 ]) {
   test(`invalid label error: ${label || "<empty>"}`, () => {
     assert.throws(
       () => decodeLabel(label),
-      (error) => error instanceof Error && error.message.includes(message)
+      (error) => error instanceof Error && error.message.includes(message),
     );
   });
 }
 
 test("curated canonicalization case stays stable", () => {
   const exampleCase = examplesData.curated_cases.find(
-    (candidate) => candidate.name === "equal_factor_block_global_choice"
+    (candidate) => candidate.name === "equal_factor_block_global_choice",
   );
   assert.ok(exampleCase);
   const factors = factorsFromCase(exampleCase);
   const summands = exampleCase.summands;
-  assert.equal(encodeLabel([...factors].reverse(), [...summands].reverse()), exampleCase.label);
+  assert.equal(
+    encodeLabel([...factors].reverse(), [...summands].reverse()),
+    exampleCase.label,
+  );
 });
 
 test("decode results can be normalized against explicit factors", () => {
-  const exampleCase = examplesData.curated_cases.find((candidate) => candidate.name === "a3_p1_weight_100");
+  const exampleCase = examplesData.curated_cases.find(
+    (candidate) => candidate.name === "a3_p1_weight_100",
+  );
   const factors = factorsFromCase(exampleCase);
   assert.deepEqual(
     normalizeDecoded(decodeLabel(exampleCase.label)),
-    normalizeExpected(factors, exampleCase.summands)
+    normalizeExpected(factors, exampleCase.summands),
   );
 });
 
 for (const [label, canonical] of [
   ["201.25", "120.26"],
   ["1.2120", "1.2021"],
-  ["11.2221", "11.2122"]
+  ["11.2221", "11.2122"],
 ]) {
   test(`non-canonical label rejected: ${label}`, () => {
     assert.throws(
       () => decodeLabel(label),
-      (error) => error instanceof Error && error.message.includes("not in canonical form")
+      (error) =>
+        error instanceof Error &&
+        error.message.includes("not in canonical form"),
     );
     assert.ok(decodeLabel(canonical));
   });

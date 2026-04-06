@@ -23,7 +23,9 @@ export function formatParabolic(nodes) {
 }
 
 export function formatParabolicLatex(nodes) {
-  return nodes.length === 1 ? `\\mathrm{P}_{${nodes[0]}}` : `\\mathrm{P}_{\\{${nodes.join(",")}\\}}`;
+  return nodes.length === 1
+    ? `\\mathrm{P}_{${nodes[0]}}`
+    : `\\mathrm{P}_{\\{${nodes.join(",")}\\}}`;
 }
 
 export function formatDynkinTypeLatex(factor) {
@@ -45,7 +47,9 @@ export function formatFundamentalWeightExpression(weights) {
     if (digit === 0) {
       return;
     }
-    terms.push(digit === 1 ? `omega${index + 1}` : `${digit} omega${index + 1}`);
+    terms.push(
+      digit === 1 ? `omega${index + 1}` : `${digit} omega${index + 1}`,
+    );
   });
   return terms.length === 0 ? "0" : terms.join(" + ");
 }
@@ -56,7 +60,9 @@ export function formatFundamentalWeightLatex(weights) {
     if (digit === 0) {
       return;
     }
-    terms.push(digit === 1 ? `\\omega_{${index + 1}}` : `${digit}\\omega_{${index + 1}}`);
+    terms.push(
+      digit === 1 ? `\\omega_{${index + 1}}` : `${digit}\\omega_{${index + 1}}`,
+    );
   });
   return terms.length === 0 ? "0" : terms.join(" + ");
 }
@@ -91,27 +97,27 @@ function classicalFactorName(group, rank, nodes) {
       return {
         label: `Fl(${nodes.join(",")};${rank + 1})`,
         latex: romanLabelLatex("Fl", [`${nodes.join(",")};${rank + 1}`]),
-        family: "flag"
+        family: "flag",
       };
     }
     if (group === "B") {
       return {
         label: `OFl(${nodes.join(",")};${2 * rank + 1})`,
         latex: romanLabelLatex("OFl", [`${nodes.join(",")};${2 * rank + 1}`]),
-        family: "flag"
+        family: "flag",
       };
     }
     if (group === "C") {
       return {
         label: `SFl(${nodes.join(",")};${2 * rank})`,
         latex: romanLabelLatex("SFl", [`${nodes.join(",")};${2 * rank}`]),
-        family: "flag"
+        family: "flag",
       };
     }
     return {
       label: `OFl(${nodes.join(",")};${2 * rank})`,
       latex: romanLabelLatex("OFl", [`${nodes.join(",")};${2 * rank}`]),
-      family: "flag"
+      family: "flag",
     };
   }
 
@@ -123,13 +129,13 @@ function classicalFactorName(group, rank, nodes) {
       return {
         label: `P^${n - 1}`,
         latex: projectiveLatex(n - 1),
-        family: "grassmannian"
+        family: "grassmannian",
       };
     }
     return {
       label: `Gr(${canonicalNode},${n})`,
       latex: romanLabelLatex("Gr", [canonicalNode, n]),
-      family: "grassmannian"
+      family: "grassmannian",
     };
   }
   if (group === "B") {
@@ -137,20 +143,20 @@ function classicalFactorName(group, rank, nodes) {
       return {
         label: `Q^${2 * rank - 1}`,
         latex: `\\mathrm{Q}^{${2 * rank - 1}}`,
-        family: "grassmannian"
+        family: "grassmannian",
       };
     }
     if (rank === 2 && node === 2) {
       return {
         label: "P^3",
         latex: projectiveLatex(3),
-        family: "grassmannian"
+        family: "grassmannian",
       };
     }
     return {
       label: `OGr(${node},${2 * rank + 1})`,
       latex: romanLabelLatex("OGr", [node, 2 * rank + 1]),
-      family: "grassmannian"
+      family: "grassmannian",
     };
   }
   if (group === "C") {
@@ -158,61 +164,61 @@ function classicalFactorName(group, rank, nodes) {
       return {
         label: `P^${2 * rank - 1}`,
         latex: projectiveLatex(2 * rank - 1),
-        family: "grassmannian"
+        family: "grassmannian",
       };
     }
     if (rank === 2 && node === 2) {
       return {
         label: "Q^3",
         latex: "\\mathrm{Q}^{3}",
-        family: "grassmannian"
+        family: "grassmannian",
       };
     }
     if (node === rank) {
       return {
         label: `LGr(${rank},${2 * rank})`,
         latex: romanLabelLatex("LGr", [rank, 2 * rank]),
-        family: "grassmannian"
+        family: "grassmannian",
       };
     }
     return {
       label: `SGr(${node},${2 * rank})`,
       latex: romanLabelLatex("SGr", [node, 2 * rank]),
-      family: "grassmannian"
+      family: "grassmannian",
     };
   }
   if (node === 1) {
     return {
       label: `Q^${2 * rank - 2}`,
       latex: `\\mathrm{Q}^{${2 * rank - 2}}`,
-      family: "grassmannian"
+      family: "grassmannian",
     };
   }
   if (rank === 3 && (node === 2 || node === 3)) {
     return {
       label: "P^3",
       latex: projectiveLatex(3),
-      family: "grassmannian"
+      family: "grassmannian",
     };
   }
   if (rank === 4 && (node === 3 || node === 4)) {
     return {
       label: "Q^6",
       latex: "\\mathrm{Q}^{6}",
-      family: "grassmannian"
+      family: "grassmannian",
     };
   }
   if (node === rank - 1 || node === rank) {
     return {
       label: `OGr+(${rank},${2 * rank})`,
       latex: romanLabelLatex("OGr", [rank, 2 * rank], { superscript: "+" }),
-      family: "grassmannian"
+      family: "grassmannian",
     };
   }
   return {
     label: `OGr(${node},${2 * rank})`,
     latex: romanLabelLatex("OGr", [node, 2 * rank]),
-    family: "grassmannian"
+    family: "grassmannian",
   };
 }
 
@@ -220,7 +226,7 @@ function exceptionalFactorName(group, rank, nodes) {
   return {
     label: `${group}${rank} / ${formatParabolic(nodes)}`,
     latex: `\\mathrm{${group}}_{${rank}} / ${formatParabolicLatex(nodes)}`,
-    family: nodes.length === 1 ? "grassmannian" : "flag"
+    family: nodes.length === 1 ? "grassmannian" : "flag",
   };
 }
 
@@ -247,7 +253,10 @@ export function describeFactor(factor) {
     humanReadableLatex: nameInfo.latex,
     family: nameInfo.family,
     identification: null,
-    grassmannianUrl: nameInfo.family === "grassmannian" ? "https://www.grassmannian.info" : null
+    grassmannianUrl:
+      nameInfo.family === "grassmannian"
+        ? "https://www.grassmannian.info"
+        : null,
   };
 }
 
@@ -255,12 +264,18 @@ export function describeAmbient(factors) {
   const factorDetails = factors.map((factor) => describeFactor(factor));
   return {
     factors: factorDetails,
-    canonicalNotation: factorDetails.map((detail) => detail.canonicalNotation).join(" x "),
+    canonicalNotation: factorDetails
+      .map((detail) => detail.canonicalNotation)
+      .join(" x "),
     canonicalNotationLatex: factorDetails
       .map((detail) => detail.canonicalNotationLatex)
       .join(" \\times "),
-    humanReadable: factorDetails.map((detail) => detail.humanReadable).join(" x "),
-    humanReadableLatex: factorDetails.map((detail) => detail.humanReadableLatex).join(" \\times ")
+    humanReadable: factorDetails
+      .map((detail) => detail.humanReadable)
+      .join(" x "),
+    humanReadableLatex: factorDetails
+      .map((detail) => detail.humanReadableLatex)
+      .join(" \\times "),
   };
 }
 
@@ -273,7 +288,7 @@ export function describeSummands(factors, summands) {
       tupleLatex: formatHighestWeightLatex(weights),
       expression: formatFundamentalWeightExpression(weights),
       expressionLatex: formatFundamentalWeightLatex(weights),
-      weights: weights.slice()
+      weights: weights.slice(),
     }));
     return {
       index: index + 1,
@@ -281,7 +296,7 @@ export function describeSummands(factors, summands) {
       flatWeights: row.flat(),
       humanReadable: factorWeights
         .map((entry) => `${entry.factor.humanReadable}: ${entry.tuple}`)
-        .join("; ")
+        .join("; "),
     };
   });
 }
@@ -296,7 +311,7 @@ export function decodeDetailedLabel(label) {
     summands,
     ambient,
     factorDetails: ambient.factors,
-    summandDetails: describeSummands(factors, summands)
+    summandDetails: describeSummands(factors, summands),
   };
 }
 
@@ -311,7 +326,7 @@ function dynkinViewBox(entry, weights) {
   }
   return {
     width,
-    height: weights === null ? 40 : 56
+    height: weights === null ? 40 : 56,
   };
 }
 
@@ -321,32 +336,52 @@ function dynkinCircle(entry, nodeId, x, y, markedNodes) {
 }
 
 function dynkinNodePositions(entry) {
-  if (entry.group === "A" || entry.group === "B" || entry.group === "C" || entry.group === "F" || entry.group === "G") {
-    return Array.from({ length: entry.rank }, (_, index) => ({ id: index + 1, x: index * 20, y: 10 }));
+  if (
+    entry.group === "A" ||
+    entry.group === "B" ||
+    entry.group === "C" ||
+    entry.group === "F" ||
+    entry.group === "G"
+  ) {
+    return Array.from({ length: entry.rank }, (_, index) => ({
+      id: index + 1,
+      x: index * 20,
+      y: 10,
+    }));
   }
   if (entry.group === "D") {
     return [
-      ...Array.from({ length: entry.rank - 2 }, (_, index) => ({ id: index + 1, x: index * 20, y: 10 })),
+      ...Array.from({ length: entry.rank - 2 }, (_, index) => ({
+        id: index + 1,
+        x: index * 20,
+        y: 10,
+      })),
       { id: entry.rank - 1, x: (entry.rank - 2) * 20, y: 0 },
-      { id: entry.rank, x: (entry.rank - 2) * 20, y: 20 }
+      { id: entry.rank, x: (entry.rank - 2) * 20, y: 20 },
     ];
   }
   return [
     { id: 1, x: 0, y: 20 },
-    ...Array.from({ length: entry.rank - 2 }, (_, index) => ({ id: index + 3, x: (index + 1) * 20, y: 20 })),
-    { id: 2, x: 40, y: 0 }
+    ...Array.from({ length: entry.rank - 2 }, (_, index) => ({
+      id: index + 3,
+      x: (index + 1) * 20,
+      y: 20,
+    })),
+    { id: 2, x: 40, y: 0 },
   ];
 }
 
 function dynkinStructure(entry, markedNodes) {
   const nodes = dynkinNodePositions(entry);
-  const circles = nodes.map((node) => dynkinCircle(entry, node.id, node.x, node.y, markedNodes)).join("");
+  const circles = nodes
+    .map((node) => dynkinCircle(entry, node.id, node.x, node.y, markedNodes))
+    .join("");
 
   if (entry.group === "A") {
     return {
       nodes,
       bonds: `<polyline points="0,10 ${(entry.rank - 1) * 20},10" />`,
-      circles
+      circles,
     };
   }
 
@@ -357,9 +392,9 @@ function dynkinStructure(entry, markedNodes) {
         `<polyline points="${(entry.rank - 2) * 20 + 7},17 ${(entry.rank - 2) * 20 + 13},10 ${(entry.rank - 2) * 20 + 7},3" />`,
         `<polyline points="0,10 ${(entry.rank - 2) * 20},10" />`,
         `<polyline points="${(entry.rank - 2) * 20},8 ${(entry.rank - 1) * 20},8" />`,
-        `<polyline points="${(entry.rank - 2) * 20},12 ${(entry.rank - 1) * 20},12" />`
+        `<polyline points="${(entry.rank - 2) * 20},12 ${(entry.rank - 1) * 20},12" />`,
       ].join(""),
-      circles
+      circles,
     };
   }
 
@@ -370,9 +405,9 @@ function dynkinStructure(entry, markedNodes) {
         `<polyline points="${(entry.rank - 2) * 20 + 13},17 ${(entry.rank - 2) * 20 + 7},10 ${(entry.rank - 2) * 20 + 13},3" />`,
         `<polyline points="0,10 ${(entry.rank - 2) * 20},10" />`,
         `<polyline points="${(entry.rank - 2) * 20},8 ${(entry.rank - 1) * 20},8" />`,
-        `<polyline points="${(entry.rank - 2) * 20},12 ${(entry.rank - 1) * 20},12" />`
+        `<polyline points="${(entry.rank - 2) * 20},12 ${(entry.rank - 1) * 20},12" />`,
       ].join(""),
-      circles
+      circles,
     };
   }
 
@@ -380,11 +415,17 @@ function dynkinStructure(entry, markedNodes) {
     return {
       nodes,
       bonds: [
-        entry.rank >= 3 ? `<polyline points="0,10 ${(entry.rank - 3) * 20},10" />` : "",
-        entry.rank >= 3 ? `<polyline points="${(entry.rank - 3) * 20},10 ${(entry.rank - 2) * 20},0" />` : "",
-        entry.rank >= 3 ? `<polyline points="${(entry.rank - 3) * 20},10 ${(entry.rank - 2) * 20},20" />` : ""
+        entry.rank >= 3
+          ? `<polyline points="0,10 ${(entry.rank - 3) * 20},10" />`
+          : "",
+        entry.rank >= 3
+          ? `<polyline points="${(entry.rank - 3) * 20},10 ${(entry.rank - 2) * 20},0" />`
+          : "",
+        entry.rank >= 3
+          ? `<polyline points="${(entry.rank - 3) * 20},10 ${(entry.rank - 2) * 20},20" />`
+          : "",
       ].join(""),
-      circles
+      circles,
     };
   }
 
@@ -393,9 +434,9 @@ function dynkinStructure(entry, markedNodes) {
       nodes,
       bonds: [
         `<polyline points="0,20 ${(entry.rank - 2) * 20},20" />`,
-        '<polyline points="40,20 40,0" />'
+        '<polyline points="40,20 40,0" />',
       ].join(""),
-      circles
+      circles,
     };
   }
 
@@ -407,9 +448,9 @@ function dynkinStructure(entry, markedNodes) {
         '<polyline points="0,10 20,10" />',
         '<polyline points="20,8 40,8" />',
         '<polyline points="20,12 40,12" />',
-        '<polyline points="40,10 60,10" />'
+        '<polyline points="40,10 60,10" />',
       ].join(""),
-      circles
+      circles,
     };
   }
 
@@ -419,9 +460,9 @@ function dynkinStructure(entry, markedNodes) {
       '<polyline points="13,17 7,10 13,3" />',
       '<polyline points="0,10 20,10" />',
       '<polyline points="0,7 20,7" />',
-      '<polyline points="0,13 20,13" />'
+      '<polyline points="0,13 20,13" />',
     ].join(""),
-    circles
+    circles,
   };
 }
 
@@ -429,10 +470,16 @@ export function renderDynkinDiagramSvg(factor, options = {}) {
   const entry = asFactor(factor);
   const weights = options.weights ?? null;
   const labels = options.labels ?? null;
-  if (weights !== null && (!Array.isArray(weights) || weights.length !== entry.rank)) {
+  if (
+    weights !== null &&
+    (!Array.isArray(weights) || weights.length !== entry.rank)
+  ) {
     throw new RangeError("weights must match the Dynkin rank");
   }
-  if (labels !== null && (!Array.isArray(labels) || labels.length !== entry.rank)) {
+  if (
+    labels !== null &&
+    (!Array.isArray(labels) || labels.length !== entry.rank)
+  ) {
     throw new RangeError("labels must match the Dynkin rank");
   }
   const markedNodes = entry.markedNodes();
@@ -445,10 +492,15 @@ export function renderDynkinDiagramSvg(factor, options = {}) {
     annotations === null
       ? ""
       : diagram.nodes
-          .filter((node) => annotations[node.id - 1] !== undefined && annotations[node.id - 1] !== null && annotations[node.id - 1] !== "")
+          .filter(
+            (node) =>
+              annotations[node.id - 1] !== undefined &&
+              annotations[node.id - 1] !== null &&
+              annotations[node.id - 1] !== "",
+          )
           .map(
             (node) =>
-              `<text class="dynkin-weight" x="${node.x}" y="${node.y + 16}" text-anchor="middle">${escapeHtml(annotations[node.id - 1])}</text>`
+              `<text class="dynkin-weight" x="${node.x}" y="${node.y + 16}" text-anchor="middle">${escapeHtml(annotations[node.id - 1])}</text>`,
           )
           .join("");
   const ariaLabel = `${factorNotation(entry)} Dynkin diagram`;
