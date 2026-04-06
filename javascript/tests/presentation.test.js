@@ -5,7 +5,9 @@ import {
   Factor,
   decodeDetailedLabel,
   describeFactor,
+  formatDynkinTypeLatex,
   formatFundamentalWeightExpression,
+  formatParabolicLatex,
   renderDynkinDiagramSvg
 } from "../src/presentation.js";
 
@@ -19,6 +21,16 @@ test("classical non-A descriptions use orthogonal and symplectic notation", () =
   assert.equal(describeFactor(new Factor("B", 3, 1)).humanReadable, "Q^5");
   assert.equal(describeFactor(new Factor("C", 3, 4)).humanReadable, "LGr(3,6)");
   assert.equal(describeFactor(new Factor("D", 5, 16)).humanReadable, "OGr+(5,10)");
+  assert.equal(describeFactor(new Factor("D", 5, 16)).identification, null);
+});
+
+test("Dynkin and parabolic latex use roman font", () => {
+  assert.equal(formatDynkinTypeLatex(new Factor("B", 3, 1)), "\\mathrm{B}_{3}");
+  assert.equal(formatParabolicLatex([1, 3]), "\\mathrm{P}_{\\{1,3\\}}");
+});
+
+test("exceptional factors avoid informal names", () => {
+  assert.equal(describeFactor(new Factor("E", 7, 64)).humanReadable, "E7 / P7");
 });
 
 test("fundamental weight expressions stay readable", () => {
@@ -33,9 +45,9 @@ test("detailed decode provides ambient summaries", () => {
   assert.equal(details.summandDetails[0].factorWeights[0].tuple, "(0)");
 });
 
-test("dynkin diagram SVG includes labels and weights", () => {
+test("dynkin diagram SVG uses the marked grassmannian-info style", () => {
   const svg = renderDynkinDiagramSvg(new Factor("B", 3, 1), { weights: [1, 0, 0] });
-  assert.match(svg, /<svg/);
-  assert.match(svg, /diagram-weight-label/);
-  assert.match(svg, />3</);
+  assert.match(svg, /<svg class="dynkin"/);
+  assert.match(svg, /data-label="B3-1" class="active"/);
+  assert.match(svg, /class="dynkin-weight"/);
 });

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ZeroLocus64 Decoder</title>
+    <script>
+      (() => {
+        const pathname = window.location.pathname;
+        const basePath = pathname
+          .replace(/\/decode(?:\/[^/]+)?$/, "/")
+          .replace(/\/specification\/?$/, "/");
+        const normalizedBase = basePath.endsWith("/") ? basePath : `${basePath}/`;
+        const base = document.createElement("base");
+        base.href = normalizedBase || "/";
+        document.head.append(base);
+      })();
+    </script>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="assets/vendor/katex/katex.min.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href=".">
+        <span class="brand-mark">ZL64</span>
+        <span class="brand-copy">
+          <strong>ZeroLocus64</strong>
+          <small>Reference decoder and browser explorer</small>
+        </span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a class="is-active" href=".">Decoder</a>
+        <a href="specification">Specification</a>
+      </nav>
+    </header>
+
+    <main class="page-shell">
+      <section class="hero hero-decoder">
+        <div class="hero-copy">
+          <p class="eyebrow">Decoder</p>
+          <h1>Decode a ZeroLocus64 label</h1>
+          <p class="hero-text">
+            ZeroLocus64 is a compact format for zero loci of completely reducible bundles on partial flag
+            varieties. Each label has an ambient part and, after the separator <code>.</code>, an optional
+            bundle part.
+          </p>
+
+          <div class="example-strip">
+            <span>Examples</span>
+            <div id="example-buttons" class="example-buttons"></div>
+          </div>
+        </div>
+
+        <div class="hero-card decoder-card">
+          <form id="decoder-form" class="decoder-form">
+            <label class="field-label" for="label-input">Encoded string</label>
+            <div class="input-row">
+              <input
+                id="label-input"
+                name="label"
+                type="text"
+                spellcheck="false"
+                autocomplete="off"
+                value="I0.24"
+                placeholder="Examples: 1, 30.24, I0.24, 11.2122"
+              />
+              <button type="submit">Translate</button>
+            </div>
+          </form>
+
+          <div id="status-panel" class="status-panel" role="status" aria-live="polite">
+            Enter a label to decode the ambient product before <code>.</code> and the bundle after it.
+          </div>
+        </div>
+      </section>
+
+      <section id="result-grid" class="result-grid" hidden>
+        <article class="panel">
+          <div class="panel-heading">
+            <p class="eyebrow">Ambient Product</p>
+          </div>
+          <div id="ambient-summary" class="summary-grid"></div>
+          <div id="factor-cards" class="factor-grid"></div>
+        </article>
+
+        <article id="bundle-panel" class="panel">
+          <div class="panel-heading">
+            <p class="eyebrow">Bundle Data</p>
+          </div>
+          <div id="bundle-summary" class="bundle-summary"></div>
+          <div id="summand-cards" class="summand-grid"></div>
+          <div id="canonical-summary" class="canonical-summary"></div>
+        </article>
+      </section>
+    </main>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

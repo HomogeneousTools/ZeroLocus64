@@ -11,4 +11,8 @@ python/build/
 python/dist/
 python/*.egg-info/
 
+website/dist/
+
+javascript/node_modules/
+
 julia/Manifest.toml

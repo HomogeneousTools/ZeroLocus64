@@ -84,6 +84,24 @@ console.assert(factors[0].group === "A");
 console.assert(summands[0][0][0] === 1);
 ```
 
+## Website
+
+Build the static GitHub Pages artifact:
+
+```text
+npm --prefix javascript run build:site
+```
+
+Preview the same artifact locally:
+
+```text
+npm --prefix javascript run site
+```
+
+Then open `http://localhost:4173` for the decoder and `http://localhost:4173/specification` for the rendered specification.
+
+Deployment to GitHub Pages is handled by [.github/workflows/pages.yml](.github/workflows/pages.yml).
+
 ## Design constraints
 
 - The Python, Julia, and JavaScript implementations are independent reference implementations.

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ZeroLocus64 Specification</title>
+    <script>
+      (() => {
+        const pathname = window.location.pathname;
+        const basePath = pathname
+          .replace(/\/decode(?:\/[^/]+)?$/, "/")
+          .replace(/\/specification\/?$/, "/");
+        const normalizedBase = basePath.endsWith("/") ? basePath : `${basePath}/`;
+        const base = document.createElement("base");
+        base.href = normalizedBase || "/";
+        document.head.append(base);
+      })();
+    </script>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="assets/vendor/katex/katex.min.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href=".">
+        <span class="brand-mark">ZL64</span>
+        <span class="brand-copy">
+          <strong>ZeroLocus64</strong>
+          <small>Reference decoder and browser explorer</small>
+        </span>
+      </a>
+      <nav class="site-nav" aria-label="Primary">
+        <a href=".">Decoder</a>
+        <a class="is-active" href="specification">Specification</a>
+      </nav>
+    </header>
+
+    <main class="page-shell specification-shell">
+      <section class="hero hero-specification">
+        <div class="hero-copy">
+          <p class="eyebrow">Specification</p>
+          <h1>ZeroLocus64 v1 format</h1>
+        </div>
+        <div class="hero-card spec-card">
+          <p class="eyebrow">Sections</p>
+          <div id="toc" class="toc-list">{{SPEC_TOC}}</div>
+        </div>
+      </section>
+
+      <section class="panel specification-panel">
+        <article id="specification-content" class="markdown-article">{{SPEC_CONTENT}}</article>
+      </section>
+    </main>
+  </body>
+</html>
