@@ -467,4 +467,8 @@ form.addEventListener("submit", (event) => {
 });
 
 labelInput.value = getInitialLabel();
-decodeCurrentLabel({ updateUrl: hasExplicitLabelRoute(), announce: hasExplicitLabelRoute() });
+if (hasExplicitLabelRoute()) {
+  decodeCurrentLabel({ updateUrl: true, announce: true });
+} else {
+  resultGrid.hidden = true;
+}
