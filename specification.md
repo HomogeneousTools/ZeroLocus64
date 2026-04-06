@@ -1,4 +1,4 @@
-# ZeroLocus64 Format Specification v1
+# ZeroLocus64 format specification v1
 
 ## Status
 
@@ -24,35 +24,33 @@ ZeroLocus64 encodes two pieces of data:
 - an ambient product of irreducible Dynkin factors with chosen parabolic nodes;
 - a direct sum of bundle summands, where each summand is given by one highest-weight vector per ambient factor.
 
+These two pieces are written as the ambient part, optionally followed by the separator `.` and then the bundle part.
+
 The format is canonical. Two inputs representing the same ambient product and bundle up to the permitted reorderings MUST encode to the same label after canonicalization.
 
-## 3. Data Model
+## 3. Data model
 
 ### 3.1 Ambient factors
 
 One ambient factor is a triple `(group, rank, mask)` where:
 
 - `group` is one of `A`, `B`, `C`, `D`, `E`, `F`, `G`;
-- `rank` is the Dynkin rank, constrained by the classification `A_r` for `r >= 1`, `B_r` for `r >= 2`, `C_r` for `r >= 3`, `D_r` for `r >= 4`, together with `E6`, `E7`, `E8`, `F4`, and `G2`;
+- `rank` is the Dynkin rank, constrained by the classification $\mathrm{A}_r$ for $r \ge 1$, $\mathrm{B}_r$ for $r \ge 2$, $\mathrm{C}_r$ for $r \ge 3$, $\mathrm{D}_r$ for $r \ge 4$, together with $\mathrm{E}_6$, $\mathrm{E}_7$, $\mathrm{E}_8$, $\mathrm{F}_4$, and $\mathrm{G}_2$;
 - `mask` is a positive bitmask whose bit `j` marks Dynkin node `j + 1`.
 
 The marked parabolic nodes of a factor are therefore the 1-based node indices corresponding to the set bits of `mask`.
+
+When exactly one node is marked, the factor is a generalized Grassmannian. Ordinary Grassmannians are the type `A` examples with a single marked node.
 
 ### 3.2 Bundle summands
 
 Let the ambient be a product of factors `X_1 x ... x X_m`, where factor `X_i` has Dynkin rank `r_i`. One direct summand contributes one highest-weight coefficient vector
 
-$$
-\lambda^{(i)} \in \mathbf{Z}_{\ge 0}^{r_i}
-$$
+$\lambda^{(i)} \in \mathbf{Z}_{\ge 0}^{r_i}$
 
-for each factor `X_i`. ZeroLocus64 flattens one summand row by concatenating these vectors in ambient order to produce one coefficient vector of length
+for each factor `X_i`. ZeroLocus64 flattens one summand row by concatenating these vectors in ambient order to produce one coefficient vector of length $W = \sum_i r_i$.
 
-$$
-W = \sum_i r_i.
-$$
-
-## 4. Alphabet and Surface Syntax
+## 4. Alphabet and syntax
 
 ZeroLocus64 uses unpadded Base64URL sextet values but displays them with the digit-first alphabet
 
@@ -79,7 +77,7 @@ Every label has exactly one of the following schematic forms:
 
 The ambient part MUST be non-empty. If `.` is present, the bundle part MUST also be non-empty.
 
-## 5. Fixed-Width Sextet Integers
+## 5. Fixed-width sextet integers
 
 A width-`w` field is a string of exactly `w` ZeroLocus64 digits and therefore stores an integer in the range
 
@@ -105,7 +103,7 @@ To canonicalize an input `(factors, summands)`:
 
 There is no exhaustive search across distinct ambient factors. Only equal-factor blocks are permuted.
 
-## 7. Ambient Encoding
+## 7. Ambient encoding
 
 ### 7.1 Standard type table
 
@@ -150,7 +148,7 @@ where:
 - `<rank_len>` is one sextet giving the number of digits used by `<rank>`;
 - `<mask_digits>` is the fixed-width encoding of `mask - 1` using the same width formula as above.
 
-Since the standard table already contains all valid exceptional types, the escape form can occur only for the classical families `A_r`, `B_r`, `C_r`, and `D_r` with `r > 16`.
+Since the standard table already contains all valid exceptional types, the escape form can occur only for the classical families $\mathrm{A}_r$, $\mathrm{B}_r$, $\mathrm{C}_r$, and $\mathrm{D}_r$ with $r > 16$.
 
 Examples:
 
@@ -159,7 +157,7 @@ A16 / P1  ->  G000
 A17 / P1  ->  0A1H000
 ```
 
-## 8. Bundle Encoding
+## 8. Bundle encoding
 
 ### 8.1 One summand row
 
@@ -232,7 +230,7 @@ To decode a label:
 9. split those digits by ambient-factor ranks to recover one bundle summand row;
 10. repeat until the bundle text is exhausted.
 
-## 10. Validation Requirements
+## 10. Validation requirements
 
 An implementation MUST reject at least the following malformed conditions:
 
@@ -248,31 +246,31 @@ An implementation MUST reject at least the following malformed conditions:
 - a truncated summand field;
 - a packed summand value that exceeds the valid range for its width.
 
-## 11. Worked Examples
+## 11. Worked examples
 
-```text
-P^1 = A1 / P1                              -> 1
-P^1 with O(1)                              -> 1.21
-P^1 with O \oplus O(1)                     -> 1.2021
-P^1 with O(1) \oplus O(1)                  -> 1.2121
-P^3 = A3 / P1                              -> 30
-P^3 with O(1)                              -> 30.24
-P^3 with O(1) \oplus O(0,0,1)              -> 30.2124
-Gr(2,4) = A3 / P2                          -> 31
-Gr(2,4) with weight (1,0,0)                -> 31.24
-Gr(3,6) = A5 / P3                          -> 53
-Fl(1,3,4) = A3 / P{1,3}                    -> 34
-Q^5 = B3 / P1                              -> I0
-Q^5 with weight (1,0,0)                    -> I0.24
-B5 / B = B5 / P{1,2,3,4,5}                 -> KU
-OGr(5,10) = D5 / P5                        -> lF
-Freudenthal variety = E7 / P7              -> y0_
-A16 / P1                                   -> G000
-A17 / P1                                   -> 0A1H000
-(P^1)^5 with O(1,1,1,1,1)                  -> 11111.2V
-P^1 x P^1 with O(1,1)                      -> 11.23
-P^1 x P^1 with O(1,0) \oplus O(0,1)        -> 11.2122
-```
+| Object | Bundle | Label |
+| --- | --- | --- |
+| $\mathbb{P}^1 = \mathrm{A}_1 / \mathrm{P}_1$ | ambient only | `1` |
+| $\mathbb{P}^1$ | $\mathcal{O}(1)$ | `1.21` |
+| $\mathbb{P}^1$ | $\mathcal{O} \oplus \mathcal{O}(1)$ | `1.2021` |
+| $\mathbb{P}^1$ | $\mathcal{O}(1) \oplus \mathcal{O}(1)$ | `1.2121` |
+| $\mathbb{P}^3 = \mathrm{A}_3 / \mathrm{P}_1$ | ambient only | `30` |
+| $\mathbb{P}^3$ | $\mathcal{O}(1)$ | `30.24` |
+| $\mathbb{P}^3$ | $\mathcal{O}(1) \oplus \mathcal{O}(0,0,1)$ | `30.2124` |
+| $\mathrm{Gr}(2,4) = \mathrm{A}_3 / \mathrm{P}_2$ | ambient only | `31` |
+| $\mathrm{Gr}(2,4)$ | weight $(1,0,0)$ | `31.24` |
+| $\mathrm{Gr}(3,6) = \mathrm{A}_5 / \mathrm{P}_3$ | ambient only | `53` |
+| $\mathrm{Fl}(1,3,4) = \mathrm{A}_3 / \mathrm{P}_{\{1,3\}}$ | ambient only | `34` |
+| $\mathrm{Q}^5 = \mathrm{B}_3 / \mathrm{P}_1$ | ambient only | `I0` |
+| $\mathrm{Q}^5$ | weight $(1,0,0)$ | `I0.24` |
+| $\mathrm{B}_5 / \mathrm{B} = \mathrm{B}_5 / \mathrm{P}_{\{1,2,3,4,5\}}$ | ambient only | `KU` |
+| $\mathrm{OGr}^{+}(5,10) = \mathrm{D}_5 / \mathrm{P}_5$ | ambient only | `lF` |
+| $\mathrm{Freudenthal\ variety} = \mathrm{E}_7 / \mathrm{P}_7$ | ambient only | `y0_` |
+| $\mathrm{A}_{16} / \mathrm{P}_1$ | ambient only | `G000` |
+| $\mathrm{A}_{17} / \mathrm{P}_1$ | ambient only | `0A1H000` |
+| $(\mathbb{P}^1)^5$ | $\mathcal{O}(1,1,1,1,1)$ | `11111.2V` |
+| $\mathbb{P}^1 \times \mathbb{P}^1$ | $\mathcal{O}(1,1)$ | `11.23` |
+| $\mathbb{P}^1 \times \mathbb{P}^1$ | $\mathcal{O}(1,0) \oplus \mathcal{O}(0,1)$ | `11.2122` |
 
 Two direct-sum examples deserve special emphasis.
 
@@ -280,7 +278,7 @@ For `P^1`, the bundle `O \oplus O(1)` has row encodings `20` and `21`, so the bu
 
 For `P^1 x P^1`, the bundle `O(1,0) \oplus O(0,1)` has row encodings `22` and `21`, which sort to `21`, `22`, giving the full label `11.2122`.
 
-## 12. Public Reference API
+## 12. Public reference API
 
 Both reference implementations expose the same conceptual operations:
 
