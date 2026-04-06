@@ -98,15 +98,27 @@ A label is **canonical** if and only if it uniquely minimizes the following orde
 
 **Uniqueness.** Encoding each factor and each summand row is deterministic once the factor order is fixed. The lexicographic minimum of a finite set of tuples is unique. Sorting the summand rows by their deterministic encodings produces a unique result. Therefore the canonical label for a given mathematical object is unique.
 
+### 6.2 Algorithm
+
+To compute the canonical form of `(factors, summands)`:
+
 1. sort the ambient factors by their encoded ambient factor strings;
 2. partition the sorted ambient factors into maximal equal-factor blocks;
-3. consider every ambient order obtained by independently permuting each equal-factor block and leaving distinct-factor order fixed;
-4. for each such ambient order, reorder every bundle summand accordingly, encode each summand row, sort those summand encodings lexicographically, and compute the resulting tuple of encoded row strings;
-5. choose the ambient order whose sorted tuple is lexicographically minimal;
-6. apply that ambient order;
-7. sort the summand rows by their encoded row strings.
+3. for each combination of permutations of the equal-factor blocks, reorder every bundle summand accordingly, encode each row, sort the encoded strings, and record the resulting tuple;
+4. choose the combination whose sorted tuple is lexicographically minimal;
+5. apply that combination to fix the canonical ambient order;
+6. sort the summand rows by their encoded strings.
 
-There is no exhaustive search across distinct ambient factors. Only equal-factor blocks are permuted.
+There is no exhaustive search across distinct ambient factors. Only equal-factor blocks are permuted. Implementations MAY use any algorithm that produces the same result as this procedure.
+
+### 6.3 Complexity
+
+The brute-force enumeration considers $\prod_i |B_i|!$ permutation combinations, where $B_i$ ranges over the equal-factor blocks. For a single block of $k$ identical factors, the cost is $k!$. Implementations SHOULD reject or warn when an equal-factor block contains more than 10 factors, as the enumeration becomes computationally impractical beyond that point.
+
+### 6.4 Ordering convention
+
+All lexicographic comparisons in this specification — including ambient factor sorting, summand-tuple comparison, and summand-row sorting — use ascending raw code-unit (byte) order of the encoded strings. Since the ZeroLocus64 alphabet consists entirely of ASCII characters, this is equivalent to standard byte-wise string comparison.
+
 ### 6.5 Canonical validation
 
 A decoded label MUST be in canonical form. After decoding a label into `(factors, summands)`, an implementation MUST re-encode the result and verify that the re-encoded label matches the original input byte for byte. If the label is not canonical, the implementation MUST reject it.
