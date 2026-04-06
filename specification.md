@@ -72,6 +72,8 @@ Every label has exactly one of the following schematic forms:
 
 The ambient part MUST be non-empty. If `.` is present, the bundle part MUST also be non-empty.
 
+A label without the `.` separator encodes only the ambient product. No bundle data whatsoever is represented; this is distinct from encoding a trivial bundle.
+
 ## 5. Fixed-width sextet integers
 
 A width-`w` field is a string of exactly `w` ZeroLocus64 digits and therefore stores an integer in the range
