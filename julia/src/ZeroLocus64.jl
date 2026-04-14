@@ -86,8 +86,14 @@ One irreducible Dynkin factor in the ambient product.
 struct Factor
     group::Char
     rank::Int
-    mask::Int
+    mask::BigInt
+    Factor(group::Char, rank::Int, mask::Integer) = new(group, rank, BigInt(mask))
 end
+
+Base.:(==)(a::Factor, b::Factor) =
+    a.group == b.group && a.rank == b.rank && a.mask == b.mask
+Base.hash(a::Factor, h::UInt) =
+    hash(a.mask, hash(a.rank, hash(a.group, h)))
 
 function validate_factor(factor::Factor)
     validate_type_rank(factor.group, factor.rank)
@@ -234,8 +240,8 @@ function decode_factor(text::AbstractString, position::Int)
     validate_type_rank(group, rank)
     stop = position + mask_width(rank) - 1
     stop <= lastindex(text) || throw(ArgumentError("mask truncated"))
-    mask = stop >= position ? Int(decode_sextets(SubString(text, position, stop))) + 1 : 1
-    1 <= big(mask) < (big(1) << rank) || throw(ArgumentError("mask out of range"))
+    mask = stop >= position ? decode_sextets(SubString(text, position, stop)) + 1 : big(1)
+    1 <= mask < (big(1) << rank) || throw(ArgumentError("mask out of range"))
     return Factor(group, rank, mask), stop + 1
 end
 

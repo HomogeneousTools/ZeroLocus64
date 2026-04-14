@@ -8,7 +8,7 @@ function factor_from_payload(payload)
     return Factor(
         only(String(payload["group"])),
         Int(payload["rank"]),
-        Int(payload["mask"]),
+        BigInt(payload["mask"]),
     )
 end
 
