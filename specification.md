@@ -440,8 +440,8 @@ For `P^1 x P^1`, the bundle `O(1,0) \oplus O(0,1)` has row encodings `22` and `2
 | Object                             | $E$                                    | $F$                | $k$ | Label          |
 | ---------------------------------- | -------------------------------------- | ------------------ | --- | -------------- |
 | $\mathbb{P}^1$                     | $\mathcal{O}(1)$                       | $\mathcal{O}(1)$   | 0   | `1.21-21-0`    |
-| $\mathbb{P}^1 \times \mathbb{P}^1$ | $\mathcal{O}(1,0)$                     | $\mathcal{O}(0,1)$ | 0   | `11.22-21-0`   |
-| $\mathbb{P}^3$                     | $\mathcal{O}(1) \oplus \mathcal{O}(1)$ | $\mathcal{O}(2)$   | 1   | `30.2424-34-1` |
+| $\mathbb{P}^1 \times \mathbb{P}^1$ | $\mathcal{O}(1,0)$                     | $\mathcal{O}(0,1)$ | 0   | `11.21-22-0`   |
+| $\mathbb{P}^3$                     | $\mathcal{O}(1) \oplus \mathcal{O}(1)$ | $\mathcal{O}(2)$   | 1   | `30.2424-3I-1` |
 
 **Derivation of the third example.** On $\mathbb{P}^3 = \mathrm{A}_3 / \mathrm{P}_1$ (ambient `30`):
 
