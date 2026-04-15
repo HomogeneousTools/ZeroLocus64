@@ -31,6 +31,22 @@ const STATIC_COPIES = [
     path.join(REPO_ROOT, "javascript", "src", "presentation.js"),
     path.join(DIST_ROOT, "assets", "presentation.js"),
   ],
+  [
+    path.join(WEBSITE_ROOT, "favicon.png"),
+    path.join(DIST_ROOT, "favicon.png"),
+  ],
+  [
+    path.join(WEBSITE_ROOT, "favicon.svg"),
+    path.join(DIST_ROOT, "favicon.svg"),
+  ],
+  [
+    path.join(WEBSITE_ROOT, "logo-header.png"),
+    path.join(DIST_ROOT, "logo-header.png"),
+  ],
+  [
+    path.join(WEBSITE_ROOT, "logo-header.svg"),
+    path.join(DIST_ROOT, "logo-header.svg"),
+  ],
 ];
 
 const STATIC_DIRECTORIES = [

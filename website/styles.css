@@ -63,16 +63,17 @@ code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2.9rem;
-  height: 1.95rem;
-  padding: 0 0.55rem;
+  padding: 0.3rem 0.55rem;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
-  color: var(--text);
-  font-size: 0.83rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+}
+
+.brand-mark img {
+  display: block;
+  height: 1.35rem;
+  width: auto;
+  image-rendering: pixelated;
 }
 
 .brand-copy {
