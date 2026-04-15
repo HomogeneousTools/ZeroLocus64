@@ -242,7 +242,7 @@ where:
 
 Since the standard table already contains all valid exceptional types, the escape form can occur only for the classical families $\mathrm{A}_r$, $\mathrm{B}_r$, $\mathrm{C}_r$, and $\mathrm{D}_r$ with $r > 15$.
 
-Because `<rank_len>` is a single character, the rank value can occupy at most 61 characters, limiting the maximum encodable escaped rank to $62^{61} - 1$. This bound is astronomical and does not constrain practical use.
+Because `<rank_len>` is a single character, the rank value can occupy at most 61 characters. Therefore an escaped factor is encodable only when the shortest representation of `rank` uses at most 61 characters, equivalently when `rank \le 62^{61} - 1`. An encoder MUST reject any factor outside that bound. This is a hard format limit.
 
 Examples showing the standard-to-escape boundary:
 
