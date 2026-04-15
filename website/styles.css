@@ -374,6 +374,10 @@ button:hover {
   grid-template-columns: 1fr;
 }
 
+.summand-section-label {
+  margin: 0.6rem 0 0;
+}
+
 .factor-card,
 .summand-card,
 .formula-card,

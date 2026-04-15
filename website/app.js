@@ -29,6 +29,8 @@ const EXAMPLES = [
   { label: "112020.20M20f", caption: "two equal blocks" },
   { label: "20H0U0.21c", caption: "mixed standard types" },
   { label: "131H0.20K212", caption: "mixed product with zero row" },
+  { label: "1.21-21-0", caption: "degeneracy on P^1" },
+  { label: "30.2424-3I-1", caption: "degeneracy on P^3" },
 ];
 
 const DEFAULT_LABEL = "H0.24";
@@ -428,9 +430,75 @@ function renderDetails(details) {
     )
     .join("");
 
+  const isDegeneracy = details.summandsF != null;
   bundlePanel.hidden = !hasBundle;
 
-  if (hasBundle) {
+  const bundleHeading = bundlePanel.querySelector(".panel-heading .eyebrow");
+  bundleHeading.textContent = isDegeneracy ? "Degeneracy Locus" : "Bundle Data";
+
+  if (isDegeneracy) {
+    const summandGeometryF = details.summandsF.map((row) => {
+      const factorRanks = row.map((weights, factorIndex) =>
+        rankBundle(
+          bundleFromWeight(
+            geometry.factorGeometry[factorIndex].variety,
+            Int32Array.from(weights),
+          ),
+        ),
+      );
+      return { factorRanks, rank: product(factorRanks) };
+    });
+    const totalRankF = summandGeometryF.reduce(
+      (sum, entry) => sum + entry.rank,
+      0n,
+    );
+    const rankE = geometry.totalRank;
+    const rankF = totalRankF;
+    const k = BigInt(details.k);
+    const expectedCodimension = (rankE - k) * (rankF - k);
+
+    const descE = escapeHtml(renderBundleDescription(details)).replaceAll(
+      "&amp;oplus;",
+      "&oplus;",
+    );
+    const descF = escapeHtml(
+      renderBundleDescription({ summandDetails: details.summandDetailsF }),
+    ).replaceAll("&amp;oplus;", "&oplus;");
+
+    bundleSummary.innerHTML = [
+      renderBundleStatRow(
+        "E",
+        `<span class="bundle-description">${descE}</span>`,
+      ),
+      renderBundleStatRow("rank E", escapeHtml(String(rankE))),
+      renderBundleStatRow(
+        "F",
+        `<span class="bundle-description">${descF}</span>`,
+      ),
+      renderBundleStatRow("rank F", escapeHtml(String(rankF))),
+      renderBundleStatRow("Rank bound k", escapeHtml(String(details.k))),
+      renderBundleStatRow(
+        "Expected codimension",
+        escapeHtml(String(expectedCodimension)),
+      ),
+    ].join("");
+
+    summandCards.innerHTML =
+      `<p class="eyebrow summand-section-label">Source bundle E</p>` +
+      details.summandDetails
+        .map((detail, index) =>
+          renderSummandCard(detail, geometry.summandGeometry[index]),
+        )
+        .join("") +
+      `<p class="eyebrow summand-section-label">Target bundle F</p>` +
+      details.summandDetailsF
+        .map((detail, index) =>
+          renderSummandCard(detail, summandGeometryF[index]),
+        )
+        .join("");
+
+    canonicalSummary.innerHTML = "";
+  } else if (hasBundle) {
     const expectedCodimension = (
       BigInt(geometry.ambientDimension) - geometry.totalRank
     ).toString();
@@ -482,9 +550,11 @@ function decodeCurrentLabel({ updateUrl = true, announce = true } = {}) {
     }
     if (announce) {
       const successMessage =
-        details.summands.length === 0
-          ? "Decoded ambient only."
-          : "Decoded successfully.";
+        details.summandsF != null
+          ? "Decoded degeneracy locus."
+          : details.summands.length === 0
+            ? "Decoded ambient only."
+            : "Decoded successfully.";
       setStatus(successMessage, "success");
     }
   } catch (error) {

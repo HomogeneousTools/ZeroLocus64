@@ -62,10 +62,11 @@
           <p class="eyebrow">Decoder</p>
           <h1>Decode a ZeroLocus62 label</h1>
           <p class="hero-text">
-            ZeroLocus62 is a compact format for zero loci of completely
-            reducible bundles on partial flag varieties. Each label has an
-            ambient part and, after the separator <code>.</code>, an optional
-            bundle part.
+            ZeroLocus62 is a compact format for zero loci and degeneracy loci of
+            completely reducible bundles on partial flag varieties. Each label
+            has an ambient part and, after the separator
+            <code>.</code>, an optional bundle part. Degeneracy loci use
+            <code>-</code> to separate the two bundles and rank bound.
           </p>
           <p class="hero-text">
             For the full description of the encoding format, check the
@@ -89,7 +90,7 @@
                 spellcheck="false"
                 autocomplete="off"
                 value="I0.24"
-                placeholder="Examples: 1, 30.24, I0.24, 11.2122"
+                placeholder="Examples: 1, 30.24, 1.21-21-0, 11.2122"
               />
               <button type="submit">Translate</button>
             </div>
