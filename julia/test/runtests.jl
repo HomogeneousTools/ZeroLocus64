@@ -1,6 +1,6 @@
 using Test
 using JSON
-using ZeroLocus64
+using ZeroLocus62
 
 const REPO_ROOT = normpath(joinpath(@__DIR__, "..", ".."))
 
@@ -61,12 +61,12 @@ const CURATED_CASES = EXAMPLES["curated_cases"]
 const CORPUS_CASES = EXAMPLES["corpus_cases"]
 
 @testset "Constants" begin
-    @test ZeroLocus64.STANDARD_NAME == "ZeroLocus62"
-    @test ZeroLocus64.SEP == '.'
-    @test ZeroLocus64.ESCAPE == '0'
-    @test length(ZeroLocus64.BASE62) == 62
-    @test startswith(ZeroLocus64.BASE62, "0123456789")
-    @test endswith(ZeroLocus64.BASE62, "yz")
+    @test ZeroLocus62.STANDARD_NAME == "ZeroLocus62"
+    @test ZeroLocus62.SEP == '.'
+    @test ZeroLocus62.ESCAPE == '0'
+    @test length(ZeroLocus62.BASE62) == 62
+    @test startswith(ZeroLocus62.BASE62, "0123456789")
+    @test endswith(ZeroLocus62.BASE62, "yz")
 end
 
 @testset "Specification Examples" begin

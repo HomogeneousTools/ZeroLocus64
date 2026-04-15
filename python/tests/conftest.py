@@ -12,7 +12,7 @@ EXAMPLES_PATH = REPO_ROOT / "examples.json"
 if str(PYTHON_SRC) not in sys.path:
     sys.path.insert(0, str(PYTHON_SRC))
 
-from zerolocus64 import Factor
+from zerolocus62 import Factor
 
 
 def factor_from_payload(payload: dict) -> Factor:

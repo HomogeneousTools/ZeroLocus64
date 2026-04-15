@@ -1,8 +1,8 @@
-# ZeroLocus64
+# ZeroLocus62
 
-[![Tests](https://github.com/HomogeneousTools/ZeroLocus64/actions/workflows/CI.yml/badge.svg)](https://github.com/HomogeneousTools/ZeroLocus64/actions/workflows/CI.yml)
+[![Tests](https://github.com/HomogeneousTools/ZeroLocus62/actions/workflows/CI.yml/badge.svg)](https://github.com/HomogeneousTools/ZeroLocus62/actions/workflows/CI.yml)
 
-ZeroLocus64 is a compact, canonical encoding for zero loci of completely reducible vector bundles on partial flag varieties. This repository contains the v1.1 format specification together with independent Python, Julia, and JavaScript reference implementations, plus a small browser-based decoder website.
+ZeroLocus62 is a compact, canonical encoding for zero loci of completely reducible vector bundles on partial flag varieties. This repository contains the v1.1 format specification together with independent Python, Julia, and JavaScript reference implementations, plus a small browser-based decoder website.
 
 The canonical format definition is [specification.md](specification.md). Treat that document as the source of truth for the v1.1 wire format, canonicalization rules, and worked examples.
 
@@ -19,7 +19,7 @@ The canonical format definition is [specification.md](specification.md). Treat t
 
 The reference implementations of the v1.1 format are:
 
-- [python/src/zerolocus64/](python/src/zerolocus64/)
+- [python/src/zerolocus62/](python/src/zerolocus62/)
 - [julia/src/](julia/src/)
 - [javascript/src/](javascript/src/)
 
@@ -46,10 +46,10 @@ Run the Python tests:
 python -m pytest python/tests
 ```
 
-The public Python API is exposed from `zerolocus64`:
+The public Python API is exposed from `zerolocus62`:
 
 ```python
-from zerolocus64 import Factor, decode_label, encode_label
+from zerolocus62 import Factor, decode_label, encode_label
 
 label = encode_label([Factor("A", 1, 1)], [[[1]]])
 assert label == "1.21"
@@ -64,10 +64,10 @@ From Julia, develop the local package and run the tests:
 julia --project=julia -e 'using Pkg; Pkg.test()'
 ```
 
-The public Julia API is exposed from `ZeroLocus64`:
+The public Julia API is exposed from `ZeroLocus62`:
 
 ```julia
-using ZeroLocus64
+using ZeroLocus62
 
 label = encode_label([Factor('A', 1, 1)], [[[1]]])
 @assert label == "1.21"
@@ -88,10 +88,10 @@ Run the JavaScript tests:
 npm --prefix javascript test
 ```
 
-The public JavaScript API is exposed from `zerolocus64`:
+The public JavaScript API is exposed from `zerolocus62`:
 
 ```js
-import { Factor, decodeLabel, encodeLabel } from "zerolocus64";
+import { Factor, decodeLabel, encodeLabel } from "zerolocus62";
 
 const label = encodeLabel([new Factor("A", 1, 1)], [[[1]]]);
 console.assert(label === "1.21");

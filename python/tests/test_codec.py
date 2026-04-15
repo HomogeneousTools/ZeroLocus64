@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from zerolocus64 import (
+from zerolocus62 import (
     BASE62,
     ESCAPE,
     SEP,

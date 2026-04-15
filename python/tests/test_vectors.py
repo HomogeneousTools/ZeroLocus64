@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from statistics import mean, median
 
-from zerolocus64 import Factor, decode_label, encode_label
+from zerolocus62 import Factor, decode_label, encode_label
 
 
 def factor_is_mathematically_valid(factor: Factor) -> bool:

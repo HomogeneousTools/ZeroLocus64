@@ -1,4 +1,4 @@
-# zerolocus64
+# zerolocus62
 
 This directory contains the JavaScript reference implementation of the ZeroLocus62 v1.1 format.
 
@@ -29,7 +29,7 @@ npm --prefix javascript test
 ## Usage
 
 ```js
-import { Factor, decodeLabel, encodeLabel } from "zerolocus64";
+import { Factor, decodeLabel, encodeLabel } from "zerolocus62";
 
 const label = encodeLabel([new Factor("A", 1, 1)], [[[1]]]);
 console.assert(label === "1.21");

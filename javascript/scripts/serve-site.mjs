@@ -84,5 +84,5 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`ZeroLocus64 site available at http://localhost:${PORT}`);
+  console.log(`ZeroLocus62 site available at http://localhost:${PORT}`);
 });

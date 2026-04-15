@@ -1,4 +1,4 @@
-# zerolocus64
+# zerolocus62
 
 This directory contains the Python reference implementation of the ZeroLocus62 v1.1 format.
 
@@ -23,7 +23,7 @@ python -m pytest python/tests
 ## Usage
 
 ```python
-from zerolocus64 import Factor, decode_label, encode_label
+from zerolocus62 import Factor, decode_label, encode_label
 
 label = encode_label([Factor("A", 1, 1)], [[[1]]])
 assert label == "1.21"

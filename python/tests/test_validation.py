@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from zerolocus64 import Factor, canonicalize, decode_label, encode_label
+from zerolocus62 import Factor, canonicalize, decode_label, encode_label
 
 
 def test_repeated_summands_remain_explicit() -> None:

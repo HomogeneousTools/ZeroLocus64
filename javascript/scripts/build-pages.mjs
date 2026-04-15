@@ -90,7 +90,7 @@ const STATIC_VENDOR_FILES = [
 const SPEC_TEMPLATE = path.join(WEBSITE_ROOT, "specification.html");
 const SPEC_MARKDOWN = path.join(REPO_ROOT, "specification.md");
 const REPOSITORY_BLOB_BASE =
-  "https://github.com/HomogeneousTools/ZeroLocus64/blob/main";
+  "https://github.com/HomogeneousTools/ZeroLocus62/blob/main";
 
 const KATEX_OPTIONS = {
   displayMode: false,

@@ -1,4 +1,4 @@
-# ZeroLocus64.jl
+# ZeroLocus62.jl
 
 This directory contains the Julia reference implementation of the ZeroLocus62 v1.1 format.
 
@@ -23,7 +23,7 @@ julia --project=julia -e 'using Pkg; Pkg.instantiate(); Pkg.test()'
 ## Usage
 
 ```julia
-using ZeroLocus64
+using ZeroLocus62
 
 label = encode_label([Factor('A', 1, 1)], [[[1]]])
 @assert label == "1.21"
