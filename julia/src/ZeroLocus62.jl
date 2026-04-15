@@ -10,7 +10,8 @@ module ZeroLocus62
 
 using Base62: BASE62_ALPHABET
 
-export Factor, canonicalize, decode_label, encode_label, is_canonical, marked_nodes
+export Factor,
+    LOCUS_SEP, canonicalize, decode_label, encode_label, is_canonical, marked_nodes
 
 const STANDARD_NAME = "ZeroLocus62"
 const BASE62_CHARS = Char.(BASE62_ALPHABET)
@@ -19,6 +20,7 @@ const BASE62_INDEX =
     Dict(character => value - 1 for (value, character) in enumerate(BASE62_CHARS))
 
 const SEP = '.'
+const LOCUS_SEP = '-'
 const ESCAPE = BASE62_CHARS[1]
 const TYPE_ORDER = Set(['A', 'B', 'C', 'D', 'E', 'F', 'G'])
 const TYPE_TABLE = vcat(
@@ -215,146 +217,15 @@ function encode_summand(row, total_dynkin_rank::Int)
     )
 end
 
-function reorder(
-    order::Vector{Int},
+function encode_bundle_text(summands::Vector{Vector{Vector{Int}}}, total_dynkin_rank::Int)
+    return join(encode_summand.(summands, Ref(total_dynkin_rank)))
+end
+
+function decode_bundle_text(
+    bundle_text::AbstractString,
     factors::Vector{Factor},
-    summands::Vector{Vector{Vector{Int}}},
+    total_dynkin_rank::Int,
 )
-    return [factors[index] for index in order],
-    [[row[index] for index in order] for row in summands]
-end
-
-"""
-    canonicalize(factors, summands)
-
-Return the canonical ambient order and canonical summand ordering.
-
-Distinct factors are sorted by their ambient codes. Equal-factor blocks are then
-permuted only as far as needed to minimize the lexicographically sorted list of
-encoded summand rows.
-"""
-function canonicalize(factors::Vector{Factor}, summands::Vector{Vector{Vector{Int}}})
-    initial_order =
-        sort(collect(eachindex(factors)); by = index -> encode_factor(factors[index]))
-    factors, summands = reorder(initial_order, factors, summands)
-    total_dynkin_rank = sum(factor.rank for factor in factors)
-    factor_codes = encode_factor.(factors)
-    equal_factor_blocks = Vector{Vector{Int}}()
-    start = 1
-    while start <= length(factors)
-        stop = start + 1
-        while stop <= length(factors) && factor_codes[stop] == factor_codes[start]
-            stop += 1
-        end
-        push!(equal_factor_blocks, collect(start:(stop-1)))
-        start = stop
-    end
-
-    best_signature = nothing
-    best_order = collect(eachindex(factors))
-    current_order = Int[]
-
-    function explore_block_permutations(
-        block_positions::Vector{Int},
-        position::Int,
-        next_block::Int,
-    )
-        if position > length(block_positions)
-            append!(current_order, block_positions)
-            explore(next_block)
-            for _ = 1:length(block_positions)
-                pop!(current_order)
-            end
-            return
-        end
-        for swap_index = position:length(block_positions)
-            block_positions[position], block_positions[swap_index] =
-                block_positions[swap_index], block_positions[position]
-            explore_block_permutations(block_positions, position + 1, next_block)
-            block_positions[position], block_positions[swap_index] =
-                block_positions[swap_index], block_positions[position]
-        end
-    end
-
-    function explore(block_index::Int)
-        if block_index > length(equal_factor_blocks)
-            _, reordered_rows = reorder(current_order, factors, summands)
-            signature = Tuple(sort(encode_summand.(reordered_rows, Ref(total_dynkin_rank))))
-            if best_signature === nothing || signature < best_signature
-                best_signature = signature
-                best_order = copy(current_order)
-            end
-            return
-        end
-        block_positions = equal_factor_blocks[block_index]
-        if length(block_positions) == 1
-            append!(current_order, block_positions)
-            explore(block_index + 1)
-            for _ = 1:length(block_positions)
-                pop!(current_order)
-            end
-            return
-        end
-        explore_block_permutations(copy(block_positions), 1, block_index + 1)
-    end
-
-    explore(1)
-    factors, summands = reorder(best_order, factors, summands)
-    sort!(summands; by = row -> encode_summand(row, total_dynkin_rank))
-    return factors, summands
-end
-
-"""
-    encode_label(factors, summands)
-
-Encode an ambient product and bundle as a canonical ZeroLocus62 label.
-
-Inputs may be provided in noncanonical order; canonicalization is always applied
-before serialization.
-"""
-function encode_label(factors::Vector{Factor}, summands::Vector{Vector{Vector{Int}}})
-    factors, summands = canonicalize(factors, summands)
-    ambient_text = join(encode_factor.(factors))
-    isempty(summands) && return ambient_text
-    total_dynkin_rank = sum(factor.rank for factor in factors)
-    bundle_text = join(encode_summand.(summands, Ref(total_dynkin_rank)))
-    return string(ambient_text, SEP, bundle_text)
-end
-
-"""
-    decode_label(label)
-
-Decode a ZeroLocus62 label into `(factors, summands)`.
-
-The returned `summands` value is a vector of bundle rows, where each row stores
-one weight vector per ambient factor.
-
-Throws `ArgumentError` if the label is not in canonical form.
-"""
-function decode_label(label::AbstractString)
-    factors, summands = _decode_label_raw(label)
-    if encode_label(factors, summands) != label
-        throw(ArgumentError("label is not in canonical form"))
-    end
-    return factors, summands
-end
-
-function _decode_label_raw(label::AbstractString)
-    ambient_text, separator, bundle_text = split_label(label)
-    isempty(ambient_text) && throw(ArgumentError("ambient part must be non-empty"))
-    separator &&
-        isempty(bundle_text) &&
-        throw(ArgumentError("separator requires a non-empty bundle"))
-
-    factors = Factor[]
-    position = 1
-    while position <= lastindex(ambient_text)
-        factor, position = decode_factor(ambient_text, position)
-        push!(factors, factor)
-    end
-    separator || return factors, Vector{Vector{Vector{Int}}}()
-
-    total_dynkin_rank = sum(factor.rank for factor in factors)
     summands = Vector{Vector{Vector{Int}}}()
     position = 1
     while position <= lastindex(bundle_text)
@@ -364,7 +235,6 @@ function _decode_label_raw(label::AbstractString)
             throw(ArgumentError("invalid bundle base character $(repr(base_character))"))
         local base::Int
         if base_value == 0
-            # Escaped base
             position + 1 <= lastindex(bundle_text) ||
                 throw(ArgumentError("escaped base truncated"))
             base_len = Int(decode_characters(string(bundle_text[position+1])))
@@ -407,7 +277,259 @@ function _decode_label_raw(label::AbstractString)
         end
         push!(summands, row)
     end
+    return summands
+end
+
+function encode_rank_bound(k::Int)
+    k >= 0 || throw(ArgumentError("rank bound must be non-negative"))
+    k == 0 && return string(BASE62_CHARS[1])
+    characters = Char[]
+    remaining = k
+    while remaining > 0
+        push!(characters, BASE62_CHARS[remaining%62+1])
+        remaining ÷= 62
+    end
+    return String(reverse(characters))
+end
+
+function decode_rank_bound(text::AbstractString)
+    isempty(text) && throw(ArgumentError("rank bound text must be non-empty"))
+    if length(text) > 1 && get(BASE62_INDEX, text[1], -1) == 0
+        throw(ArgumentError("rank bound has leading zeros"))
+    end
+    value = big(0)
+    for ch in text
+        char_value = get(BASE62_INDEX, ch, -1)
+        char_value >= 0 ||
+            throw(ArgumentError("invalid Base62 character in rank bound $(repr(ch))"))
+        value = value * 62 + char_value
+    end
+    return Int(value)
+end
+
+function reorder(
+    order::Vector{Int},
+    factors::Vector{Factor},
+    summands::Vector{Vector{Vector{Int}}},
+)
+    return [factors[index] for index in order],
+    [[row[index] for index in order] for row in summands]
+end
+
+"""
+    canonicalize(factors, summands[, summands_f, k])
+
+Return the canonical ambient order and canonical summand ordering.
+
+For degeneracy loci, pass `summands_f` and `k`. Returns a 4-tuple
+`(factors, summands_e, summands_f, k)` in that case.
+"""
+function canonicalize(
+    factors::Vector{Factor},
+    summands::Vector{Vector{Vector{Int}}},
+    summands_f::Union{Vector{Vector{Vector{Int}}},Nothing} = nothing,
+    k::Union{Int,Nothing} = nothing,
+)
+    is_degeneracy = summands_f !== nothing
+    initial_order =
+        sort(collect(eachindex(factors)); by = index -> encode_factor(factors[index]))
+    factors, summands = reorder(initial_order, factors, summands)
+    if is_degeneracy
+        _, summands_f = reorder(initial_order, factors, summands_f)
+    end
+    total_dynkin_rank = sum(factor.rank for factor in factors)
+    factor_codes = encode_factor.(factors)
+    equal_factor_blocks = Vector{Vector{Int}}()
+    start = 1
+    while start <= length(factors)
+        stop = start + 1
+        while stop <= length(factors) && factor_codes[stop] == factor_codes[start]
+            stop += 1
+        end
+        push!(equal_factor_blocks, collect(start:(stop-1)))
+        start = stop
+    end
+
+    function sorted_sig(rows)
+        return Tuple(sort(encode_summand.(rows, Ref(total_dynkin_rank))))
+    end
+
+    best_signature = nothing
+    best_order = collect(eachindex(factors))
+    current_order = Int[]
+
+    function explore_block_permutations(
+        block_positions::Vector{Int},
+        position::Int,
+        next_block::Int,
+    )
+        if position > length(block_positions)
+            append!(current_order, block_positions)
+            explore(next_block)
+            for _ = 1:length(block_positions)
+                pop!(current_order)
+            end
+            return
+        end
+        for swap_index = position:length(block_positions)
+            block_positions[position], block_positions[swap_index] =
+                block_positions[swap_index], block_positions[position]
+            explore_block_permutations(block_positions, position + 1, next_block)
+            block_positions[position], block_positions[swap_index] =
+                block_positions[swap_index], block_positions[position]
+        end
+    end
+
+    function explore(block_index::Int)
+        if block_index > length(equal_factor_blocks)
+            _, reordered_e = reorder(current_order, factors, summands)
+            signature = (sorted_sig(reordered_e),)
+            if is_degeneracy
+                _, reordered_f = reorder(current_order, factors, summands_f)
+                signature = (sorted_sig(reordered_e), sorted_sig(reordered_f))
+            end
+            if best_signature === nothing || signature < best_signature
+                best_signature = signature
+                best_order = copy(current_order)
+            end
+            return
+        end
+        block_positions = equal_factor_blocks[block_index]
+        if length(block_positions) == 1
+            append!(current_order, block_positions)
+            explore(block_index + 1)
+            for _ = 1:length(block_positions)
+                pop!(current_order)
+            end
+            return
+        end
+        explore_block_permutations(copy(block_positions), 1, block_index + 1)
+    end
+
+    explore(1)
+    if is_degeneracy
+        _, summands_f = reorder(best_order, factors, summands_f)
+    end
+    factors, summands = reorder(best_order, factors, summands)
+    sort!(summands; by = row -> encode_summand(row, total_dynkin_rank))
+    if is_degeneracy
+        sort!(summands_f; by = row -> encode_summand(row, total_dynkin_rank))
+        return factors, summands, summands_f, k
+    end
     return factors, summands
+end
+
+"""
+    encode_label(factors, summands[, summands_f, k])
+
+Encode an ambient product and bundle as a canonical ZeroLocus62 label.
+
+For degeneracy loci, pass `summands_f` and `k`.
+"""
+function encode_label(
+    factors::Vector{Factor},
+    summands::Vector{Vector{Vector{Int}}},
+    summands_f::Union{Vector{Vector{Vector{Int}}},Nothing} = nothing,
+    k::Union{Int,Nothing} = nothing,
+)
+    is_degeneracy = summands_f !== nothing
+    result = canonicalize(factors, summands, summands_f, k)
+    canon_factors = result[1]
+    canon_summands = result[2]
+    ambient_text = join(encode_factor.(canon_factors))
+    if !is_degeneracy && isempty(canon_summands)
+        return ambient_text
+    end
+    total_dynkin_rank = sum(factor.rank for factor in canon_factors)
+    if is_degeneracy
+        canon_summands_f = result[3]
+        return string(
+            ambient_text,
+            SEP,
+            encode_bundle_text(canon_summands, total_dynkin_rank),
+            LOCUS_SEP,
+            encode_bundle_text(canon_summands_f, total_dynkin_rank),
+            LOCUS_SEP,
+            encode_rank_bound(k),
+        )
+    end
+    return string(ambient_text, SEP, encode_bundle_text(canon_summands, total_dynkin_rank))
+end
+
+"""
+    decode_label(label)
+
+Decode a ZeroLocus62 label into a named tuple.
+
+Zero-locus labels return `(type=:zero_locus, factors=..., summands=...)`.
+Degeneracy-locus labels return `(type=:degeneracy_locus, factors=...,
+summands_e=..., summands_f=..., k=...)`.
+
+Throws `ArgumentError` if the label is not in canonical form.
+"""
+function decode_label(label::AbstractString)
+    result = _decode_label_raw(label)
+    if result.type == :degeneracy_locus
+        re_encoded =
+            encode_label(result.factors, result.summands_e, result.summands_f, result.k)
+    else
+        re_encoded = encode_label(result.factors, result.summands)
+    end
+    if re_encoded != label
+        throw(ArgumentError("label is not in canonical form"))
+    end
+    return result
+end
+
+function _decode_label_raw(label::AbstractString)
+    ambient_text, separator, locus_text = split_label(label)
+    isempty(ambient_text) && throw(ArgumentError("ambient part must be non-empty"))
+    separator &&
+        isempty(locus_text) &&
+        throw(ArgumentError("separator requires a non-empty bundle"))
+
+    factors = Factor[]
+    position = 1
+    while position <= lastindex(ambient_text)
+        factor, position = decode_factor(ambient_text, position)
+        push!(factors, factor)
+    end
+    separator || return (
+        type = :ambient,
+        factors = factors,
+        summands = Vector{Vector{Vector{Int}}}(),
+    )
+
+    total_dynkin_rank = sum(factor.rank for factor in factors)
+    locus_parts = split(locus_text, LOCUS_SEP)
+
+    if length(locus_parts) == 1
+        summands = decode_bundle_text(locus_text, factors, total_dynkin_rank)
+        return (type = :zero_locus, factors = factors, summands = summands)
+    end
+
+    length(locus_parts) == 3 || throw(
+        ArgumentError(
+            "locus part must contain 0 or 2 dashes, got $(length(locus_parts) - 1)",
+        ),
+    )
+
+    bundle_text_e, bundle_text_f, rank_bound_text = locus_parts
+    isempty(bundle_text_e) && throw(ArgumentError("bundle E must be non-empty"))
+    isempty(bundle_text_f) && throw(ArgumentError("bundle F must be non-empty"))
+    isempty(rank_bound_text) && throw(ArgumentError("rank bound must be non-empty"))
+
+    summands_e = decode_bundle_text(bundle_text_e, factors, total_dynkin_rank)
+    summands_f = decode_bundle_text(bundle_text_f, factors, total_dynkin_rank)
+    k = decode_rank_bound(rank_bound_text)
+
+    return (
+        type = :degeneracy_locus,
+        factors = factors,
+        summands_e = summands_e,
+        summands_f = summands_f,
+        k = k,
+    )
 end
 
 function split_label(label::AbstractString)
@@ -418,10 +540,10 @@ function split_label(label::AbstractString)
     ambient_text =
         separator_index == firstindex(label) ? "" :
         String(SubString(label, firstindex(label), prevind(label, separator_index)))
-    bundle_text =
+    locus_text =
         separator_index == lastindex(label) ? "" :
         String(SubString(label, nextind(label, separator_index), lastindex(label)))
-    return ambient_text, true, bundle_text
+    return ambient_text, true, locus_text
 end
 
 """
@@ -430,14 +552,13 @@ end
 Return `true` if `label` is a valid canonical ZeroLocus62 label.
 """
 function is_canonical(label::AbstractString)
-    local factors, summands
     try
-        factors, summands = _decode_label_raw(label)
+        decode_label(label)
+        return true
     catch e
         e isa ArgumentError || rethrow()
         return false
     end
-    return encode_label(factors, summands) == label
 end
 
 end

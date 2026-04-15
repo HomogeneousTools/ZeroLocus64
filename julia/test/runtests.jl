@@ -104,7 +104,10 @@ end
     ]
     for (label, factors, summands) in examples
         @test encode_label(factors, summands) == label
-        @test decode_label(label) == canonicalize(factors, summands)
+        result = decode_label(label)
+        canon = canonicalize(factors, summands)
+        @test result.factors == canon[1]
+        @test result.summands == canon[2]
     end
 end
 
@@ -118,7 +121,9 @@ end
         @test !(String(case["name"]) in seen)
         push!(seen, String(case["name"]))
         @test encode_label(factors, summands) == label
-        @test decode_label(label) == (factors, summands)
+        result = decode_label(label)
+        @test result.factors == factors
+        @test result.summands == summands
     end
 
     indexed = Dict(String(case["name"]) => case for case in CURATED_CASES)
@@ -135,7 +140,9 @@ end
         summands = summands_from_case(case)
         label = String(case["label"])
         @test encode_label(factors, summands) == label
-        @test decode_label(label) == (factors, summands)
+        result = decode_label(label)
+        @test result.factors == factors
+        @test result.summands == summands
     end
 end
 
@@ -194,9 +201,9 @@ end
     assert_decode_error("1.2120", "not in canonical form")
     assert_decode_error("11.2221", "not in canonical form")
 
-    @test decode_label("120.26") isa Tuple
-    @test decode_label("1.2021") isa Tuple
-    @test decode_label("11.2122") isa Tuple
+    @test decode_label("120.26") isa NamedTuple
+    @test decode_label("1.2021") isa NamedTuple
+    @test decode_label("11.2122") isa NamedTuple
 end
 
 @testset "is_canonical" begin
@@ -228,16 +235,21 @@ end
 
     label = encode_label([Factor('A', 1, 1)], [[[42]]])
     @test startswith(label, "1.")
-    @test decode_label(label) == ([Factor('A', 1, 1)], [[[42]]])
+    result = decode_label(label)
+    @test result.factors == [Factor('A', 1, 1)]
+    @test result.summands == [[[42]]]
 
     factors = [Factor('A', 1, 1), Factor('A', 1, 1)]
     summands = [[[1], [0]], [[5], [0]], [[12], [0]]]
     label2 = encode_label(factors, summands)
-    @test decode_label(label2) == canonicalize(factors, summands)
+    result2 = decode_label(label2)
+    canon = canonicalize(factors, summands)
+    @test result2.factors == canon[1]
+    @test result2.summands == canon[2]
 
     for l in ["H0.24", "iF", "u11", "0A1H000", "0B1H000"]
-        factors_decoded, _ = decode_label(l)
-        @test length(factors_decoded) > 0
+        result = decode_label(l)
+        @test length(result.factors) > 0
     end
 end
 
@@ -245,24 +257,145 @@ end
     factors_61 = [Factor('A', 1, 1)]
     summands_61 = [[[61]]]
     @test encode_label(factors_61, summands_61) == "1.0210z"
-    @test decode_label("1.0210z") == canonicalize(factors_61, summands_61)
+    canon_61 = canonicalize(factors_61, summands_61)
+    result_61 = decode_label("1.0210z")
+    @test result_61.factors == canon_61[1]
+    @test result_61.summands == canon_61[2]
 
     factors_100 = [Factor('A', 1, 1)]
     summands_100 = [[[100]]]
     @test encode_label(factors_100, summands_100) == "1.021d1c"
-    @test decode_label("1.021d1c") == canonicalize(factors_100, summands_100)
+    canon_100 = canonicalize(factors_100, summands_100)
+    result_100 = decode_label("1.021d1c")
+    @test result_100.factors == canon_100[1]
+    @test result_100.summands == canon_100[2]
 
     factors_mixed = [Factor('A', 1, 1)]
     summands_mixed = [[[61]], [[1]]]
     @test encode_label(factors_mixed, summands_mixed) == "1.0210z21"
-    @test decode_label("1.0210z21") == canonicalize(factors_mixed, summands_mixed)
+    canon_mixed = canonicalize(factors_mixed, summands_mixed)
+    result_mixed = decode_label("1.0210z21")
+    @test result_mixed.factors == canon_mixed[1]
+    @test result_mixed.summands == canon_mixed[2]
 
     factors_big = [Factor('A', 1, 1)]
     summands_big = [[[1000]]]
     label_big = encode_label(factors_big, summands_big)
-    @test decode_label(label_big) == canonicalize(factors_big, summands_big)
+    canon_big = canonicalize(factors_big, summands_big)
+    result_big = decode_label(label_big)
+    @test result_big.factors == canon_big[1]
+    @test result_big.summands == canon_big[2]
 
     @test is_canonical("1.0210z") == true
     @test is_canonical("1.021d1c") == true
     @test is_canonical("1.0210z21") == true
+end
+
+# --- Degeneracy locus tests ---
+
+@testset "Degeneracy Locus" begin
+    @test LOCUS_SEP == '-'
+
+    # Spec examples
+    spec_cases = [
+        ("P1 id", [Factor('A', 1, 1)], [[[1]]], [[[1]]], 0, "1.21-21-0"),
+        (
+            "P1xP1",
+            [Factor('A', 1, 1), Factor('A', 1, 1)],
+            [[[1], [0]]],
+            [[[0], [1]]],
+            0,
+            "11.21-22-0",
+        ),
+        (
+            "P3 two-to-one",
+            [Factor('A', 3, 1)],
+            [[[1, 0, 0]], [[1, 0, 0]]],
+            [[[2, 0, 0]]],
+            1,
+            "30.2424-3I-1",
+        ),
+    ]
+
+    @testset "spec: $(name)" for (name, factors, sE, sF, k, label) in spec_cases
+        @test encode_label(factors, sE, sF, k) == label
+        result = decode_label(label)
+        @test result.type == :degeneracy_locus
+        @test result.k == k
+        @test length(result.summands_e) == length(sE)
+        @test length(result.summands_f) == length(sF)
+    end
+
+    @testset "decode returns tagged result" begin
+        result = decode_label("1.21-21-0")
+        @test result.type == :degeneracy_locus
+        @test length(result.factors) == 1
+        @test result.summands_e == [[[1]]]
+        @test result.summands_f == [[[1]]]
+        @test result.k == 0
+    end
+
+    @testset "round-trip" begin
+        factors = [Factor('A', 2, 1)]
+        sE = [[[1, 0]]]
+        sF = [[[0, 1]]]
+        k = 0
+        label = encode_label(factors, sE, sF, k)
+        result = decode_label(label)
+        @test result.type == :degeneracy_locus
+        @test encode_label(
+            result.factors,
+            result.summands_e,
+            result.summands_f,
+            result.k,
+        ) == label
+    end
+
+    @testset "canonicalize minimizes E then F" begin
+        factors = [Factor('A', 1, 1), Factor('A', 1, 1)]
+        label1 = encode_label(factors, [[[1], [0]]], [[[0], [1]]], 0)
+        label2 = encode_label(factors, [[[0], [1]]], [[[1], [0]]], 0)
+        @test label1 == label2 == "11.21-22-0"
+    end
+
+    @testset "rank bound k > 0" begin
+        factors = [Factor('A', 3, 1)]
+        label = encode_label(factors, [[[1, 0, 0]]], [[[1, 0, 0]]], 5)
+        @test endswith(label, "-5")
+        result = decode_label(label)
+        @test result.k == 5
+    end
+
+    @testset "rank bound k=62 uses two chars" begin
+        factors = [Factor('A', 1, 1)]
+        label = encode_label(factors, [[[1]]], [[[1]]], 62)
+        @test endswith(label, "-10")
+        result = decode_label(label)
+        @test result.k == 62
+    end
+
+    @testset "is_canonical degeneracy" begin
+        @test is_canonical("1.21-21-0") == true
+        @test is_canonical("11.21-22-0") == true
+        @test is_canonical("30.2424-3I-1") == true
+    end
+
+    @testset "invalid degeneracy labels" begin
+        @test_throws ArgumentError decode_label("1.21-21-")
+        @test_throws ArgumentError decode_label("1.-21-0")
+        @test_throws ArgumentError decode_label("1.21--0")
+        @test_throws ArgumentError decode_label("1.21-21-21-0")
+    end
+
+    @testset "zero_locus decode tagged" begin
+        result = decode_label("1.21")
+        @test result.type == :zero_locus
+        @test result.summands == [[[1]]]
+    end
+
+    @testset "ambient decode tagged" begin
+        result = decode_label("1")
+        @test result.type == :ambient
+        @test result.summands == []
+    end
 end
