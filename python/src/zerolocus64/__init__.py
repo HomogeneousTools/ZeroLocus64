@@ -1,48 +1,43 @@
-"""ZeroLocus64 v1 canonical label codec for partial-flag zero loci.
+"""ZeroLocus62 v1.1 canonical label codec for partial-flag zero loci.
 
-This module is the reference Python implementation of the ZeroLocus64 v1
+This module is the reference Python implementation of the ZeroLocus62 v1.1
 specification.
 
-ZeroLocus64 uses Base64URL at the bit level, but presents sextet values
-through the digit-first alphabet
-``0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_``. This
-keeps the implementation on top of the standard library's Base64 helpers while
-preserving compact labels such as ``1`` for ``A1 / P1`` and ``30`` for
-``A3 / P1``.
+ZeroLocus62 uses the 62-character lexicographic alphabet
+``0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz``
+for encoding labels. Integer-to-string conversion is done via big-integer
+arithmetic (repeated division by 62). ``0`` is the escape character, and
+``.`` separates the ambient part from the optional bundle part.
 """
 
 from __future__ import annotations
 
-import base64
 from dataclasses import dataclass
 from itertools import permutations, product
 
-STANDARD_NAME = "ZeroLocus64"
-RFC4648_BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-BASE64 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_"
-BASE64_INDEX = {char: value for value, char in enumerate(BASE64)}
-_TO_LABEL_ALPHABET = str.maketrans(RFC4648_BASE64URL, BASE64)
-_FROM_LABEL_ALPHABET = str.maketrans(BASE64, RFC4648_BASE64URL)
+STANDARD_NAME = "ZeroLocus62"
+BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+BASE62_INDEX = {char: value for value, char in enumerate(BASE62)}
 
 SEP = "."
-ESCAPE = BASE64[0]
+ESCAPE = BASE62[0]
 TYPE_ORDER = "ABCDEFG"
 TYPE_TABLE: list[tuple[str, int]] = (
-    [("A", rank) for rank in range(1, 17)]
-    + [("B", rank) for rank in range(2, 17)]
-    + [("C", rank) for rank in range(3, 17)]
-    + [("D", rank) for rank in range(4, 17)]
+    [("A", rank) for rank in range(1, 16)]
+    + [("B", rank) for rank in range(2, 16)]
+    + [("C", rank) for rank in range(3, 16)]
+    + [("D", rank) for rank in range(4, 16)]
     + [("E", 6), ("E", 7), ("E", 8)]
     + [("F", 4)]
     + [("G", 2)]
 )
-TYPE_CHARS = BASE64[1 : 1 + len(TYPE_TABLE)]
+TYPE_CHARS = BASE62[1 : 1 + len(TYPE_TABLE)]
 TYPE_INDEX = {entry: index for index, entry in enumerate(TYPE_TABLE)}
 TYPE_CHAR_INDEX = {char: index for index, char in enumerate(TYPE_CHARS)}
 
 
 def _is_valid_type_rank(group: str, rank: int) -> bool:
-    return rank <= 64 and (
+    return (
         (group == "A" and rank >= 1)
         or (group == "B" and rank >= 2)
         or (group == "C" and rank >= 3)
@@ -81,36 +76,17 @@ class Factor:
         return [node + 1 for node in range(self.rank) if self.mask >> node & 1]
 
 
-def base64url_encode(data: bytes) -> str:
-    """Encode bytes as unpadded Base64URL text in the ZeroLocus64 alphabet."""
-
-    return (
-        base64.urlsafe_b64encode(data)
-        .decode("ascii")
-        .rstrip("=")
-        .translate(_TO_LABEL_ALPHABET)
-    )
-
-
-def base64url_decode(text: str) -> bytes:
-    """Decode ZeroLocus64 alphabet text back to raw bytes."""
-
-    standard_text = text.translate(_FROM_LABEL_ALPHABET)
-    padding = "=" * ((4 - len(standard_text) % 4) % 4)
-    return base64.urlsafe_b64decode(standard_text + padding)
-
-
 def _mask_width(rank: int) -> int:
     width = 0
     capacity = 1
     while capacity <= (1 << rank) - 2:
         width += 1
-        capacity *= 64
+        capacity *= 62
     return width
 
 
-def _encode_sextets(value: int, width: int) -> str:
-    """Encode ``value`` as exactly ``width`` sextets."""
+def _encode_characters(value: int, width: int) -> str:
+    """Encode ``value`` as exactly ``width`` base-62 characters."""
 
     if width < 0:
         raise ValueError("width must be non-negative")
@@ -118,41 +94,39 @@ def _encode_sextets(value: int, width: int) -> str:
         if value:
             raise ValueError("non-zero value does not fit in width 0")
         return ""
-    total_bits = 6 * width
-    if not 0 <= value < 1 << total_bits:
-        raise ValueError("value does not fit in sextet width")
-    byte_width = (total_bits + 7) // 8
-    pad_bits = 8 * byte_width - total_bits
-    payload = (value << pad_bits).to_bytes(byte_width, "big")
-    return base64url_encode(payload)[:width]
+    if not 0 <= value < 62**width:
+        raise ValueError("value does not fit in character width")
+    characters = []
+    remaining = value
+    for _ in range(width):
+        characters.append(BASE62[remaining % 62])
+        remaining //= 62
+    return "".join(reversed(characters))
 
 
-def _decode_sextets(text: str) -> int:
-    """Decode a fixed-width sextet string."""
+def _decode_characters(text: str) -> int:
+    """Decode a fixed-width base-62 character string."""
 
-    if not text:
-        return 0
-    total_bits = 6 * len(text)
-    byte_width = (total_bits + 7) // 8
-    pad_bits = 8 * byte_width - total_bits
-    full_width = (8 * byte_width + 5) // 6
-    payload = base64url_decode(text + ESCAPE * (full_width - len(text)))
-    if len(payload) != byte_width:
-        raise ValueError("decoded payload has incorrect width")
-    return int.from_bytes(payload, "big") >> pad_bits
+    value = 0
+    for char in text:
+        char_value = BASE62_INDEX.get(char, -1)
+        if char_value < 0:
+            raise ValueError(f"invalid base-62 character {char!r}")
+        value = value * 62 + char_value
+    return value
 
 
 def _encode_natural(value: int) -> str:
-    """Encode a positive integer in the shortest available sextet width."""
+    """Encode a positive integer in the shortest available character width."""
 
     if value <= 0:
         raise ValueError("natural must be positive")
     width = 1
-    capacity = 64
+    capacity = 62
     while value >= capacity:
         width += 1
-        capacity *= 64
-    return _encode_sextets(value, width)
+        capacity *= 62
+    return _encode_characters(value, width)
 
 
 def _encode_factor(factor: Factor) -> str:
@@ -160,14 +134,14 @@ def _encode_factor(factor: Factor) -> str:
     width = _mask_width(factor.rank)
     index = TYPE_INDEX.get((factor.group, factor.rank))
     if index is not None:
-        return TYPE_CHARS[index] + _encode_sextets(factor.mask - 1, width)
-    rank_digits = _encode_natural(factor.rank)
+        return TYPE_CHARS[index] + _encode_characters(factor.mask - 1, width)
+    rank_characters = _encode_natural(factor.rank)
     return (
         ESCAPE
         + factor.group
-        + _encode_sextets(len(rank_digits), 1)
-        + rank_digits
-        + _encode_sextets(factor.mask - 1, width)
+        + _encode_characters(len(rank_characters), 1)
+        + rank_characters
+        + _encode_characters(factor.mask - 1, width)
     )
 
 
@@ -181,14 +155,14 @@ def _decode_factor(text: str, position: int) -> tuple[Factor, int]:
         group = text[position + 1]
         if group not in TYPE_ORDER:
             raise ValueError(f"unknown Dynkin type {group!r}")
-        rank_length = _decode_sextets(text[position + 2])
+        rank_length = _decode_characters(text[position + 2])
         if rank_length <= 0:
             raise ValueError("escaped rank length must be positive")
         start = position + 3
         end = start + rank_length
         if end > len(text):
             raise ValueError("escaped rank truncated")
-        rank = _decode_sextets(text[start:end])
+        rank = _decode_characters(text[start:end])
         position = end
     else:
         index = TYPE_CHAR_INDEX.get(lead_char, -1)
@@ -200,32 +174,32 @@ def _decode_factor(text: str, position: int) -> tuple[Factor, int]:
     end = position + _mask_width(rank)
     if end > len(text):
         raise ValueError("mask truncated")
-    mask = _decode_sextets(text[position:end]) + 1 if end > position else 1
+    mask = _decode_characters(text[position:end]) + 1 if end > position else 1
     if not 1 <= mask < (1 << rank):
         raise ValueError("mask out of range")
     return Factor(group, rank, mask), end
 
 
 def _row_base(row: list[list[int]]) -> int:
-    return max(2, max((digit for weights in row for digit in weights), default=1) + 1)
+    return max(2, max((coefficient for weights in row for coefficient in weights), default=1) + 1)
 
 
 def _row_value(row: list[list[int]], base: int) -> int:
     value = 0
     for weights in row:
-        for digit in weights:
-            value = value * base + digit
+        for coefficient in weights:
+            value = value * base + coefficient
     return value
 
 
 def _summand_width(total_dynkin_rank: int, base: int) -> int:
-    if not 2 <= base < 64:
-        raise ValueError("bundle base must lie in 2..63")
+    if base < 2:
+        raise ValueError("bundle base must be at least 2")
     width = 1
-    capacity = 64
+    capacity = 62
     while capacity < base**total_dynkin_rank:
         width += 1
-        capacity *= 64
+        capacity *= 62
     return width
 
 
@@ -234,7 +208,16 @@ def _encode_summand(row: list[list[int]], total_dynkin_rank: int) -> str:
 
     base = _row_base(row)
     width = _summand_width(total_dynkin_rank, base)
-    return _encode_sextets(base, 1) + _encode_sextets(_row_value(row, base), width)
+    value_chars = _encode_characters(_row_value(row, base), width)
+    if base < 62:
+        return _encode_characters(base, 1) + value_chars
+    base_characters = _encode_natural(base)
+    return (
+        ESCAPE
+        + _encode_characters(len(base_characters), 1)
+        + base_characters
+        + value_chars
+    )
 
 
 def _reorder(
@@ -291,7 +274,7 @@ def canonicalize(
 
 
 def encode_label(factors: list[Factor], summands: list[list[list[int]]]) -> str:
-    """Encode an ambient product and bundle as a canonical ZeroLocus64 label.
+    """Encode an ambient product and bundle as a canonical ZeroLocus62 label.
 
     Inputs may be supplied in noncanonical order; canonicalization is always
     applied before serialization.
@@ -327,21 +310,43 @@ def _decode_label_raw(label: str) -> tuple[list[Factor], list[list[list[int]]]]:
     summands: list[list[list[int]]] = []
     position = 0
     while position < len(bundle_text):
-        base_digit = bundle_text[position]
-        base = BASE64_INDEX.get(base_digit, -1)
-        if not 2 <= base < 64:
-            raise ValueError(f"invalid bundle base digit {base_digit!r}")
+        base_character = bundle_text[position]
+        base_value = BASE62_INDEX.get(base_character, -1)
+        if base_value < 0:
+            raise ValueError(f"invalid bundle base character {base_character!r}")
+        if base_value == 0:
+            # Escaped base
+            if position + 2 > len(bundle_text):
+                raise ValueError("escaped base truncated")
+            base_len = _decode_characters(bundle_text[position + 1])
+            if base_len <= 0:
+                raise ValueError("escaped base length must be positive")
+            base_start = position + 2
+            base_end = base_start + base_len
+            if base_end > len(bundle_text):
+                raise ValueError("escaped base truncated")
+            base = _decode_characters(bundle_text[base_start:base_end])
+            if base < 62:
+                raise ValueError("escaped base must be at least 62")
+            position = base_end
+        elif base_value == 1:
+            raise ValueError("bundle base character 1 is reserved")
+        else:
+            base = base_value
+            if not 2 <= base < 62:
+                raise ValueError(f"invalid bundle base character {base_character!r}")
+            position += 1
         width = _summand_width(total_dynkin_rank, base)
-        start = position + 1
+        start = position
         end = start + width
         if end > len(bundle_text):
             raise ValueError("summand truncated")
-        value = _decode_sextets(bundle_text[start:end])
+        value = _decode_characters(bundle_text[start:end])
         position = end
 
-        flat_digits = [0] * total_dynkin_rank
+        flat_coefficients = [0] * total_dynkin_rank
         for index in range(total_dynkin_rank - 1, -1, -1):
-            flat_digits[index] = value % base
+            flat_coefficients[index] = value % base
             value //= base
         if value:
             raise ValueError("packed value exceeds range")
@@ -349,14 +354,14 @@ def _decode_label_raw(label: str) -> tuple[list[Factor], list[list[list[int]]]]:
         row: list[list[int]] = []
         offset = 0
         for factor in factors:
-            row.append(flat_digits[offset : offset + factor.rank])
+            row.append(flat_coefficients[offset : offset + factor.rank])
             offset += factor.rank
         summands.append(row)
     return factors, summands
 
 
 def decode_label(label: str) -> tuple[list[Factor], list[list[list[int]]]]:
-    """Decode a ZeroLocus64 label into ``(factors, summands)``.
+    """Decode a ZeroLocus62 label into ``(factors, summands)``.
 
     The returned ``summands`` value is a list of bundle rows, where each row
     stores one weight vector per ambient factor.
@@ -371,7 +376,7 @@ def decode_label(label: str) -> tuple[list[Factor], list[list[list[int]]]]:
 
 
 def is_canonical(label: str) -> bool:
-    """Return ``True`` if *label* is a valid canonical ZeroLocus64 label."""
+    """Return ``True`` if *label* is a valid canonical ZeroLocus62 label."""
 
     try:
         factors, summands = _decode_label_raw(label)
@@ -381,11 +386,10 @@ def is_canonical(label: str) -> bool:
 
 
 __all__ = [
-    "BASE64",
-    "BASE64_INDEX",
+    "BASE62",
+    "BASE62_INDEX",
     "ESCAPE",
     "Factor",
-    "RFC4648_BASE64URL",
     "SEP",
     "STANDARD_NAME",
     "TYPE_CHARS",
@@ -393,8 +397,6 @@ __all__ = [
     "TYPE_INDEX",
     "TYPE_ORDER",
     "TYPE_TABLE",
-    "base64url_decode",
-    "base64url_encode",
     "canonicalize",
     "decode_label",
     "encode_label",

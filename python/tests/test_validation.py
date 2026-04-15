@@ -30,9 +30,9 @@ def test_invalid_dynkin_type_rank_pairs_are_rejected_on_encode() -> None:
 @pytest.mark.parametrize(
     "label",
     [
-        "I0.24",
-        "lF",
-        "y0_",
+        "H0.24",
+        "iF",
+        "u11",
         "0A1H000",
         "0B1H000",
     ],

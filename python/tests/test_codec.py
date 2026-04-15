@@ -3,13 +3,11 @@ from __future__ import annotations
 import pytest
 
 from zerolocus64 import (
-    BASE64,
+    BASE62,
     ESCAPE,
     SEP,
     STANDARD_NAME,
     Factor,
-    base64url_decode,
-    base64url_encode,
     canonicalize,
     decode_label,
     encode_label,
@@ -34,12 +32,13 @@ SPEC_EXAMPLES = [
     ("Gr(2,4)", [Factor("A", 3, 2)], [], "31"),
     ("Gr(3,6)", [Factor("A", 5, 4)], [], "53"),
     ("Fl(1,3,4)", [Factor("A", 3, 5)], [], "34"),
-    ("Q5", [Factor("B", 3, 1)], [], "I0"),
-    ("Q5 with bundle", [Factor("B", 3, 1)], [[[1, 0, 0]]], "I0.24"),
-    ("B5/B", [Factor("B", 5, 31)], [], "KU"),
-    ("OGr(5,10)", [Factor("D", 5, 16)], [], "lF"),
-    ("Freudenthal", [Factor("E", 7, 64)], [], "y0_"),
-    ("A16 boundary", [Factor("A", 16, 1)], [], "G000"),
+    ("Q5", [Factor("B", 3, 1)], [], "H0"),
+    ("Q5 with bundle", [Factor("B", 3, 1)], [[[1, 0, 0]]], "H0.24"),
+    ("B5/B", [Factor("B", 5, 31)], [], "JU"),
+    ("OGr(5,10)", [Factor("D", 5, 16)], [], "iF"),
+    ("Freudenthal", [Factor("E", 7, 64)], [], "u11"),
+    ("A15 boundary", [Factor("A", 15, 1)], [], "F000"),
+    ("A16 escape", [Factor("A", 16, 1)], [], "0A1G000"),
     ("A17 escape", [Factor("A", 17, 1)], [], "0A1H000"),
     (
         "(P1)^5 diagonal",
@@ -64,18 +63,12 @@ SPEC_EXAMPLES = [
 
 
 def test_public_constants_are_stable() -> None:
-    assert STANDARD_NAME == "ZeroLocus64"
+    assert STANDARD_NAME == "ZeroLocus62"
     assert SEP == "."
     assert ESCAPE == "0"
-    assert len(BASE64) == 64
-    assert BASE64.startswith("0123456789")
-    assert BASE64.endswith("-_")
-
-
-def test_base64url_helpers_round_trip_bytes() -> None:
-    payload = bytes([0xFB, 0xFF])
-    assert base64url_encode(payload) == "-_y"
-    assert base64url_decode("-_y") == payload
+    assert len(BASE62) == 62
+    assert BASE62.startswith("0123456789")
+    assert BASE62.endswith("yz")
 
 
 def test_factor_marked_nodes_reports_one_based_positions() -> None:
@@ -126,9 +119,9 @@ def test_curated_case_names_are_unique(curated_cases: list[dict]) -> None:
         ("0A2H", "escaped rank truncated"),
         ("0A1H", "mask truncated"),
         ("23", "mask out of range"),
-        ("11.1", "invalid bundle base digit"),
+        ("11.1", "bundle base character 1 is reserved"),
         ("11.2", "summand truncated"),
-        ("30.21.", "invalid bundle base digit"),
+        ("30.21.", "invalid bundle base character"),
     ],
 )
 def test_invalid_labels_raise_descriptive_errors(label: str, message: str) -> None:

@@ -72,7 +72,7 @@ def test_corpus_length_fields_match_labels(corpus_cases: list[dict]) -> None:
 def test_corpus_length_statistics_stay_compact(corpus_cases: list[dict]) -> None:
     lengths = sorted(case["length"] for case in corpus_cases)
     assert len(lengths) == 2088
-    assert round(mean(lengths), 2) < 16.0
-    assert median(lengths) <= 15
-    assert lengths[int(0.9 * len(lengths)) - 1] <= 20
+    assert round(mean(lengths), 2) < 17.0
+    assert median(lengths) <= 16
+    assert lengths[int(0.9 * len(lengths)) - 1] <= 22
     assert lengths[-1] >= 30
