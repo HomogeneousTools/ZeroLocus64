@@ -43,12 +43,12 @@ export function formatHighestWeightLatex(weights) {
 
 export function formatFundamentalWeightExpression(weights) {
   const terms = [];
-  weights.forEach((digit, index) => {
-    if (digit === 0) {
+  weights.forEach((coefficient, index) => {
+    if (coefficient === 0) {
       return;
     }
     terms.push(
-      digit === 1 ? `omega${index + 1}` : `${digit} omega${index + 1}`,
+      coefficient === 1 ? `omega${index + 1}` : `${coefficient} omega${index + 1}`,
     );
   });
   return terms.length === 0 ? "0" : terms.join(" + ");
@@ -56,12 +56,12 @@ export function formatFundamentalWeightExpression(weights) {
 
 export function formatFundamentalWeightLatex(weights) {
   const terms = [];
-  weights.forEach((digit, index) => {
-    if (digit === 0) {
+  weights.forEach((coefficient, index) => {
+    if (coefficient === 0) {
       return;
     }
     terms.push(
-      digit === 1 ? `\\omega_{${index + 1}}` : `${digit}\\omega_{${index + 1}}`,
+      coefficient === 1 ? `\\omega_{${index + 1}}` : `${coefficient}\\omega_{${index + 1}}`,
     );
   });
   return terms.length === 0 ? "0" : terms.join(" + ");

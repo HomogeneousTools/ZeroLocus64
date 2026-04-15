@@ -2,13 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  BASE64,
+  BASE62,
   ESCAPE,
   SEP,
   STANDARD_NAME,
   Factor,
-  base64urlDecode,
-  base64urlEncode,
   canonicalize,
   decodeLabel,
   encodeLabel,
@@ -38,12 +36,13 @@ const SPEC_EXAMPLES = [
   ["Gr(2,4)", [new Factor("A", 3, 2)], [], "31"],
   ["Gr(3,6)", [new Factor("A", 5, 4)], [], "53"],
   ["Fl(1,3,4)", [new Factor("A", 3, 5)], [], "34"],
-  ["Q5", [new Factor("B", 3, 1)], [], "I0"],
-  ["Q5 with bundle", [new Factor("B", 3, 1)], [[[1, 0, 0]]], "I0.24"],
-  ["B5/B", [new Factor("B", 5, 31)], [], "KU"],
-  ["OGr(5,10)", [new Factor("D", 5, 16)], [], "lF"],
-  ["Freudenthal", [new Factor("E", 7, 64)], [], "y0_"],
-  ["A16 boundary", [new Factor("A", 16, 1)], [], "G000"],
+  ["Q5", [new Factor("B", 3, 1)], [], "H0"],
+  ["Q5 with bundle", [new Factor("B", 3, 1)], [[[1, 0, 0]]], "H0.24"],
+  ["B5/B", [new Factor("B", 5, 31)], [], "JU"],
+  ["OGr(5,10)", [new Factor("D", 5, 16)], [], "iF"],
+  ["Freudenthal", [new Factor("E", 7, 64)], [], "u11"],
+  ["A15 boundary", [new Factor("A", 15, 1)], [], "F000"],
+  ["A16 escape", [new Factor("A", 16, 1)], [], "0A1G000"],
   ["A17 escape", [new Factor("A", 17, 1)], [], "0A1H000"],
   [
     "(P1)^5 diagonal",
@@ -75,18 +74,12 @@ const SPEC_EXAMPLES = [
 ];
 
 test("public constants are stable", () => {
-  assert.equal(STANDARD_NAME, "ZeroLocus64");
+  assert.equal(STANDARD_NAME, "ZeroLocus62");
   assert.equal(SEP, ".");
   assert.equal(ESCAPE, "0");
-  assert.equal(BASE64.length, 64);
-  assert.ok(BASE64.startsWith("0123456789"));
-  assert.ok(BASE64.endsWith("-_"));
-});
-
-test("base64url helpers round-trip bytes", () => {
-  const payload = Uint8Array.from([0xfb, 0xff]);
-  assert.equal(base64urlEncode(payload), "-_y");
-  assert.deepEqual(Array.from(base64urlDecode("-_y")), Array.from(payload));
+  assert.equal(BASE62.length, 62);
+  assert.ok(BASE62.startsWith("0123456789"));
+  assert.ok(BASE62.endsWith("yz"));
 });
 
 test("factor marked nodes report one-based positions", () => {
@@ -145,9 +138,9 @@ for (const [label, message] of [
   ["0A2H", "escaped rank truncated"],
   ["0A1H", "mask truncated"],
   ["23", "mask out of range"],
-  ["11.1", "invalid bundle base digit"],
+  ["11.1", "bundle base character 1 is reserved"],
   ["11.2", "summand truncated"],
-  ["30.21.", "invalid bundle base digit"],
+  ["30.21.", "invalid bundle base character"],
 ]) {
   test(`invalid label error: ${label || "<empty>"}`, () => {
     assert.throws(
@@ -214,4 +207,53 @@ test("isCanonical returns false for invalid labels", () => {
   assert.equal(isCanonical(""), false);
   assert.equal(isCanonical(".21"), false);
   assert.equal(isCanonical("0"), false);
+});
+
+test("escaped base round-trip: coefficient 61", () => {
+  const factors = [new Factor("A", 1, 1)];
+  const summands = [[[61]]];
+  const label = encodeLabel(factors, summands);
+  assert.equal(label, "1.0210z");
+  assert.deepEqual(
+    normalizeDecoded(decodeLabel(label)),
+    normalizeDecoded(canonicalize(factors, summands)),
+  );
+});
+
+test("escaped base round-trip: coefficient 100", () => {
+  const factors = [new Factor("A", 1, 1)];
+  const summands = [[[100]]];
+  const label = encodeLabel(factors, summands);
+  assert.equal(label, "1.021d1c");
+  assert.deepEqual(
+    normalizeDecoded(decodeLabel(label)),
+    normalizeDecoded(canonicalize(factors, summands)),
+  );
+});
+
+test("escaped base round-trip: mixed standard and escaped", () => {
+  const factors = [new Factor("A", 1, 1)];
+  const summands = [[[61]], [[1]]];
+  const label = encodeLabel(factors, summands);
+  assert.equal(label, "1.0210z21");
+  assert.deepEqual(
+    normalizeDecoded(decodeLabel(label)),
+    normalizeDecoded(canonicalize(factors, summands)),
+  );
+});
+
+test("escaped base round-trip: large coefficient", () => {
+  const factors = [new Factor("A", 1, 1)];
+  const summands = [[[1000]]];
+  const label = encodeLabel(factors, summands);
+  assert.deepEqual(
+    normalizeDecoded(decodeLabel(label)),
+    normalizeDecoded(canonicalize(factors, summands)),
+  );
+});
+
+test("isCanonical accepts escaped base labels", () => {
+  assert.equal(isCanonical("1.0210z"), true);
+  assert.equal(isCanonical("1.021d1c"), true);
+  assert.equal(isCanonical("1.0210z21"), true);
 });

@@ -1,17 +1,21 @@
-export const STANDARD_NAME = "ZeroLocus64";
-export const RFC4648_BASE64URL =
-  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-export const BASE64 =
-  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_";
+import base62 from "base62";
+
+base62.setCharacterSet(
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+);
+
+export const STANDARD_NAME = "ZeroLocus62";
+export const BASE62 =
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 export const SEP = ".";
-export const ESCAPE = BASE64[0];
+export const ESCAPE = BASE62[0];
 export const TYPE_ORDER = "ABCDEFG";
 
 export const TYPE_TABLE = Object.freeze([
-  ...Array.from({ length: 16 }, (_, index) => ["A", index + 1]),
-  ...Array.from({ length: 15 }, (_, index) => ["B", index + 2]),
-  ...Array.from({ length: 14 }, (_, index) => ["C", index + 3]),
-  ...Array.from({ length: 13 }, (_, index) => ["D", index + 4]),
+  ...Array.from({ length: 15 }, (_, index) => ["A", index + 1]),
+  ...Array.from({ length: 14 }, (_, index) => ["B", index + 2]),
+  ...Array.from({ length: 13 }, (_, index) => ["C", index + 3]),
+  ...Array.from({ length: 12 }, (_, index) => ["D", index + 4]),
   ["E", 6],
   ["E", 7],
   ["E", 8],
@@ -19,11 +23,11 @@ export const TYPE_TABLE = Object.freeze([
   ["G", 2],
 ]);
 
-export const TYPE_CHARS = BASE64.slice(1, 1 + TYPE_TABLE.length);
+export const TYPE_CHARS = BASE62.slice(1, 1 + TYPE_TABLE.length);
 
-export const BASE64_INDEX = Object.freeze(
+export const BASE62_INDEX = Object.freeze(
   Object.fromEntries(
-    Array.from(BASE64, (character, value) => [character, value]),
+    Array.from(BASE62, (character, value) => [character, value]),
   ),
 );
 
@@ -94,8 +98,8 @@ function normalizeSummands(summands, factors) {
       if (!Array.isArray(weights)) {
         throw new RangeError("highest-weight entry must be an array");
       }
-      return weights.map((digit) =>
-        toNonNegativeSafeInteger(digit, "highest-weight digit"),
+      return weights.map((coefficient) =>
+        toNonNegativeSafeInteger(coefficient, "highest-weight coefficient"),
       );
     });
   });
@@ -119,22 +123,6 @@ function compareStringTuples(left, right) {
     }
   }
   return left.length - right.length;
-}
-
-function normalizeBytes(data) {
-  if (data instanceof Uint8Array) {
-    return data;
-  }
-  if (ArrayBuffer.isView(data)) {
-    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  }
-  if (data instanceof ArrayBuffer) {
-    return new Uint8Array(data);
-  }
-  if (Array.isArray(data)) {
-    return Uint8Array.from(data);
-  }
-  throw new TypeError("data must be bytes-like");
 }
 
 export class Factor {
@@ -162,14 +150,13 @@ export class Factor {
 
 export function isValidTypeRank(group, rank) {
   return (
-    rank <= 64 &&
-    ((group === "A" && rank >= 1) ||
-      (group === "B" && rank >= 2) ||
-      (group === "C" && rank >= 3) ||
-      (group === "D" && rank >= 4) ||
-      (group === "E" && (rank === 6 || rank === 7 || rank === 8)) ||
-      (group === "F" && rank === 4) ||
-      (group === "G" && rank === 2))
+    (group === "A" && rank >= 1) ||
+    (group === "B" && rank >= 2) ||
+    (group === "C" && rank >= 3) ||
+    (group === "D" && rank >= 4) ||
+    (group === "E" && (rank === 6 || rank === 7 || rank === 8)) ||
+    (group === "F" && rank === 4) ||
+    (group === "G" && rank === 2)
   );
 }
 
@@ -186,70 +173,18 @@ function validateFactor(factor) {
   }
 }
 
-export function base64urlEncode(data) {
-  const bytes = normalizeBytes(data);
-  let encoded = "";
-  for (let index = 0; index < bytes.length; index += 3) {
-    const remaining = bytes.length - index;
-    const chunk =
-      (bytes[index] << 16) |
-      ((remaining > 1 ? bytes[index + 1] : 0) << 8) |
-      (remaining > 2 ? bytes[index + 2] : 0);
-    encoded += BASE64[(chunk >> 18) & 63];
-    encoded += BASE64[(chunk >> 12) & 63];
-    if (remaining > 1) {
-      encoded += BASE64[(chunk >> 6) & 63];
-    }
-    if (remaining > 2) {
-      encoded += BASE64[chunk & 63];
-    }
-  }
-  return encoded;
-}
-
-export function base64urlDecode(text) {
-  if (typeof text !== "string") {
-    throw new TypeError("text must be a string");
-  }
-  if (text.length % 4 === 1) {
-    throw new RangeError(
-      "invalid Base64URL length (RFC 4648 does not permit length \u2261 1 mod 4)",
-    );
-  }
-  const bytes = [];
-  let buffer = 0n;
-  let bits = 0;
-  for (const character of text) {
-    const digit = BASE64_INDEX[character];
-    if (digit === undefined) {
-      throw new RangeError(`invalid Base64 digit ${JSON.stringify(character)}`);
-    }
-    buffer = (buffer << 6n) | BigInt(digit);
-    bits += 6;
-    while (bits >= 8) {
-      bits -= 8;
-      bytes.push(Number((buffer >> BigInt(bits)) & 255n));
-      buffer &= bits === 0 ? 0n : (1n << BigInt(bits)) - 1n;
-    }
-  }
-  if (bits > 0 && buffer !== 0n) {
-    throw new RangeError("invalid Base64URL padding");
-  }
-  return Uint8Array.from(bytes);
-}
-
 function maskWidth(rank) {
   let width = 0;
   let capacity = 1n;
   const limit = (1n << BigInt(rank)) - 2n;
   while (capacity <= limit) {
     width += 1;
-    capacity *= 64n;
+    capacity *= 62n;
   }
   return width;
 }
 
-function encodeSextets(value, width) {
+function encodeCharacters(value, width) {
   const integerValue = toBigInt(value, "value");
   if (width < 0) {
     throw new RangeError("width must be non-negative");
@@ -260,26 +195,35 @@ function encodeSextets(value, width) {
     }
     return "";
   }
-  if (!(0n <= integerValue && integerValue < 64n ** BigInt(width))) {
-    throw new RangeError("value does not fit in sextet width");
+  if (!(0n <= integerValue && integerValue < 62n ** BigInt(width))) {
+    throw new RangeError("value does not fit in character width");
+  }
+  if (integerValue <= BigInt(Number.MAX_SAFE_INTEGER)) {
+    return base62.encode(Number(integerValue)).padStart(width, "0");
   }
   let remaining = integerValue;
-  const digits = Array.from({ length: width }, () => ESCAPE);
+  const characters = Array.from({ length: width }, () => "0");
   for (let index = width - 1; index >= 0; index -= 1) {
-    digits[index] = BASE64[Number(remaining % 64n)];
-    remaining /= 64n;
+    characters[index] = BASE62[Number(remaining % 62n)];
+    remaining /= 62n;
   }
-  return digits.join("");
+  return characters.join("");
 }
 
-function decodeSextets(text) {
+function decodeCharacters(text) {
+  if (text.length === 0) {
+    return 0n;
+  }
+  if (text.length <= 8) {
+    return BigInt(base62.decode(text));
+  }
   let value = 0n;
   for (const character of text) {
-    const digit = BASE64_INDEX[character];
-    if (digit === undefined) {
-      throw new RangeError(`invalid Base64 digit ${JSON.stringify(character)}`);
+    const charValue = BASE62_INDEX[character];
+    if (charValue === undefined) {
+      throw new RangeError(`invalid Base62 character ${JSON.stringify(character)}`);
     }
-    value = value * 64n + BigInt(digit);
+    value = value * 62n + BigInt(charValue);
   }
   return value;
 }
@@ -290,12 +234,12 @@ function encodeNatural(value) {
     throw new RangeError("natural must be positive");
   }
   let width = 1;
-  let capacity = 64n;
+  let capacity = 62n;
   while (integerValue >= capacity) {
     width += 1;
-    capacity *= 64n;
+    capacity *= 62n;
   }
-  return encodeSextets(integerValue, width);
+  return encodeCharacters(integerValue, width);
 }
 
 function encodeFactor(factor) {
@@ -303,15 +247,15 @@ function encodeFactor(factor) {
   const width = maskWidth(factor.rank);
   const index = TYPE_INDEX.get(`${factor.group}${factor.rank}`);
   if (index !== undefined) {
-    return TYPE_CHARS[index] + encodeSextets(factor.mask - 1n, width);
+    return TYPE_CHARS[index] + encodeCharacters(factor.mask - 1n, width);
   }
-  const rankDigits = encodeNatural(factor.rank);
+  const rankCharacters = encodeNatural(factor.rank);
   return (
     ESCAPE +
     factor.group +
-    encodeSextets(rankDigits.length, 1) +
-    rankDigits +
-    encodeSextets(factor.mask - 1n, width)
+    encodeCharacters(rankCharacters.length, 1) +
+    rankCharacters +
+    encodeCharacters(factor.mask - 1n, width)
   );
 }
 
@@ -331,7 +275,7 @@ function decodeFactor(text, position) {
     if (!TYPE_ORDER.includes(group)) {
       throw new RangeError(`unknown Dynkin type ${JSON.stringify(group)}`);
     }
-    const rankLength = Number(decodeSextets(text[position + 2]));
+    const rankLength = Number(decodeCharacters(text[position + 2]));
     if (rankLength <= 0) {
       throw new RangeError("escaped rank length must be positive");
     }
@@ -340,7 +284,7 @@ function decodeFactor(text, position) {
     if (end > text.length) {
       throw new RangeError("escaped rank truncated");
     }
-    rank = toSafeInteger(decodeSextets(text.slice(start, end)), "rank");
+    rank = toSafeInteger(decodeCharacters(text.slice(start, end)), "rank");
     nextPosition = end;
   } else {
     const index = TYPE_CHAR_INDEX[leadCharacter];
@@ -358,7 +302,7 @@ function decodeFactor(text, position) {
     throw new RangeError("mask truncated");
   }
   const mask =
-    end > nextPosition ? decodeSextets(text.slice(nextPosition, end)) + 1n : 1n;
+    end > nextPosition ? decodeCharacters(text.slice(nextPosition, end)) + 1n : 1n;
   if (!(1n <= mask && mask < 1n << BigInt(rank))) {
     throw new RangeError("mask out of range");
   }
@@ -366,37 +310,37 @@ function decodeFactor(text, position) {
 }
 
 function rowBase(row) {
-  let maxDigit = 1;
+  let maxCoefficient = 1;
   for (const weights of row) {
-    for (const digit of weights) {
-      if (digit > maxDigit) {
-        maxDigit = digit;
+    for (const coefficient of weights) {
+      if (coefficient > maxCoefficient) {
+        maxCoefficient = coefficient;
       }
     }
   }
-  return Math.max(2, maxDigit + 1);
+  return Math.max(2, maxCoefficient + 1);
 }
 
 function rowValue(row, base) {
   let value = 0n;
   for (const weights of row) {
-    for (const digit of weights) {
-      value = value * BigInt(base) + BigInt(digit);
+    for (const coefficient of weights) {
+      value = value * BigInt(base) + BigInt(coefficient);
     }
   }
   return value;
 }
 
 function summandWidth(totalDynkinRank, base) {
-  if (!(2 <= base && base < 64)) {
-    throw new RangeError("bundle base must lie in 2..63");
+  if (base < 2) {
+    throw new RangeError("bundle base must be at least 2");
   }
   let width = 1;
-  let capacity = 64n;
+  let capacity = 62n;
   const required = BigInt(base) ** BigInt(totalDynkinRank);
   while (capacity < required) {
     width += 1;
-    capacity *= 64n;
+    capacity *= 62n;
   }
   return width;
 }
@@ -404,7 +348,17 @@ function summandWidth(totalDynkinRank, base) {
 function encodeSummand(row, totalDynkinRank) {
   const base = rowBase(row);
   const width = summandWidth(totalDynkinRank, base);
-  return encodeSextets(base, 1) + encodeSextets(rowValue(row, base), width);
+  const valueChars = encodeCharacters(rowValue(row, base), width);
+  if (base < 62) {
+    return encodeCharacters(base, 1) + valueChars;
+  }
+  const baseCharacters = encodeNatural(base);
+  return (
+    ESCAPE +
+    encodeCharacters(baseCharacters.length, 1) +
+    baseCharacters +
+    valueChars
+  );
 }
 
 function reorder(order, factors, summands) {
@@ -575,25 +529,59 @@ function decodeLabelRaw(label) {
   const summands = [];
   position = 0;
   while (position < bundleText.length) {
-    const baseDigit = bundleText[position];
-    const base = BASE64_INDEX[baseDigit];
-    if (!(2 <= base && base < 64)) {
+    const baseCharacter = bundleText[position];
+    const baseValue = BASE62_INDEX[baseCharacter];
+    if (baseValue === undefined) {
       throw new RangeError(
-        `invalid bundle base digit ${JSON.stringify(baseDigit)}`,
+        `invalid bundle base character ${JSON.stringify(baseCharacter)}`,
       );
     }
+    let base;
+    if (baseValue === 0) {
+      // Escaped base
+      if (position + 2 > bundleText.length) {
+        throw new RangeError("escaped base truncated");
+      }
+      const baseLen = Number(decodeCharacters(bundleText[position + 1]));
+      if (baseLen <= 0) {
+        throw new RangeError("escaped base length must be positive");
+      }
+      const baseStart = position + 2;
+      const baseEnd = baseStart + baseLen;
+      if (baseEnd > bundleText.length) {
+        throw new RangeError("escaped base truncated");
+      }
+      base = toSafeInteger(
+        decodeCharacters(bundleText.slice(baseStart, baseEnd)),
+        "escaped base",
+      );
+      if (base < 62) {
+        throw new RangeError("escaped base must be at least 62");
+      }
+      position = baseEnd;
+    } else if (baseValue === 1) {
+      throw new RangeError("bundle base character 1 is reserved");
+    } else {
+      base = baseValue;
+      if (!(2 <= base && base < 62)) {
+        throw new RangeError(
+          `invalid bundle base character ${JSON.stringify(baseCharacter)}`,
+        );
+      }
+      position += 1;
+    }
     const width = summandWidth(totalDynkinRank, base);
-    const start = position + 1;
+    const start = position;
     const end = start + width;
     if (end > bundleText.length) {
       throw new RangeError("summand truncated");
     }
-    let value = decodeSextets(bundleText.slice(start, end));
+    let value = decodeCharacters(bundleText.slice(start, end));
     position = end;
 
-    const flatDigits = Array.from({ length: totalDynkinRank }, () => 0);
+    const flatCoefficients = Array.from({ length: totalDynkinRank }, () => 0);
     for (let index = totalDynkinRank - 1; index >= 0; index -= 1) {
-      flatDigits[index] = Number(value % BigInt(base));
+      flatCoefficients[index] = Number(value % BigInt(base));
       value /= BigInt(base);
     }
     if (value !== 0n) {
@@ -603,7 +591,7 @@ function decodeLabelRaw(label) {
     const row = [];
     let offset = 0;
     for (const factor of factors) {
-      row.push(flatDigits.slice(offset, offset + factor.rank));
+      row.push(flatCoefficients.slice(offset, offset + factor.rank));
       offset += factor.rank;
     }
     summands.push(row);
@@ -628,8 +616,6 @@ export function isCanonical(label) {
   }
 }
 
-export const base64url_encode = base64urlEncode;
-export const base64url_decode = base64urlDecode;
 export const encode_label = encodeLabel;
 export const decode_label = decodeLabel;
 export const is_canonical = isCanonical;

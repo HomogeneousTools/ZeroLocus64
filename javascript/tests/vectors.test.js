@@ -79,8 +79,8 @@ test("corpus length statistics stay compact", () => {
   const median = lengths[Math.floor(lengths.length / 2)];
   const percentile90 = lengths[Math.floor(0.9 * lengths.length) - 1];
   assert.equal(lengths.length, 2088);
-  assert.ok(Number(mean.toFixed(2)) < 16);
-  assert.ok(median <= 15);
-  assert.ok(percentile90 <= 20);
+  assert.ok(Number(mean.toFixed(2)) < 17);
+  assert.ok(median <= 16);
+  assert.ok(percentile90 <= 22);
   assert.ok(lengths.at(-1) >= 30);
 });
