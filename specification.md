@@ -15,8 +15,10 @@ A character means exactly one element of the Base62 alphabet.
 ZeroLocus62 encodes geometric loci on products of partial flag varieties. A label always begins with an ambient part describing the factors of the ambient product. There are three kinds of label:
 
 1. **Ambient only.** The label encodes just the ambient product, with no locus data.
-2. **Zero locus.** The label encodes the ambient product together with a single completely reducible vector bundle $E$. The geometric object is the zero locus of a general global section of $E$.
-3. **Degeneracy locus.** The label encodes the ambient product together with two completely reducible vector bundles $E$ and $F$, plus a non-negative integer rank bound $k$. The geometric object is the $k$-th degeneracy locus of a general morphism $\varphi \colon E \to F$.
+2. **Zero locus.** The label encodes the ambient product together with a single non-zero completely reducible vector bundle $E$. The geometric object is the zero locus of a general global section of $E$.
+3. **Degeneracy locus.** The label encodes the ambient product together with two non-zero completely reducible vector bundles $E$ and $F$, plus a non-negative integer rank bound $k$. The geometric object is the $k$-th degeneracy locus of a general morphism $\varphi \colon E \to F$.
+
+The zero-bundle case for a zero locus is represented by the ambient-only form, not by an empty locus part.
 
 The format is canonical. Two inputs representing the same ambient product and locus data up to the permitted reorderings MUST encode to the same label after canonicalization.
 
