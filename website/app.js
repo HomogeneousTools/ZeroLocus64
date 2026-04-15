@@ -19,19 +19,19 @@ import {
 const EXAMPLES = [
   { label: "1", caption: "P^1 ambient" },
   { label: "30.24", caption: "A3 / P1 with O(1)" },
-  { label: "I0.24", caption: "B3 / P1 with weight (1,0,0)" },
+  { label: "H0.24", caption: "B3 / P1 with weight (1,0,0)" },
   { label: "11.2122", caption: "split bundle on P^1 x P^1" },
   { label: "11111.2V", caption: "(P^1)^5 diagonal" },
-  { label: "lF", caption: "D5 / P5" },
-  { label: "y0_", caption: "E7 / P7" },
+  { label: "iF", caption: "D5 / P5" },
+  { label: "u11", caption: "E7 / P7" },
   { label: "0A1H000", caption: "A17 / P1" },
   { label: "1120.252A", caption: "equal-factor block" },
-  { label: "112020.2M2f", caption: "two equal blocks" },
-  { label: "20I0W0.21a", caption: "mixed standard types" },
-  { label: "111140.20O20e218228", caption: "longer bundle example" }
+  { label: "112020.20M20f", caption: "two equal blocks" },
+  { label: "20H0U0.21c", caption: "mixed standard types" },
+  { label: "131H0.20K212", caption: "mixed product with zero row" }
 ];
 
-const DEFAULT_LABEL = "I0.24";
+const DEFAULT_LABEL = "H0.24";
 
 const form = document.querySelector("#decoder-form");
 const labelInput = document.querySelector("#label-input");
@@ -419,7 +419,7 @@ function renderDetails(details) {
 function decodeCurrentLabel({ updateUrl = true, announce = true } = {}) {
   const label = labelInput.value.trim();
   if (!label) {
-    setStatus("Enter a non-empty ZeroLocus64 label.", "error");
+    setStatus("Enter a non-empty ZeroLocus62 label.", "error");
     resultGrid.hidden = true;
     return;
   }
