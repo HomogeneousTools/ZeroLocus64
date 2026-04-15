@@ -1,67 +1,47 @@
 """
     ZeroLocus64
 
-Reference Julia implementation of the ZeroLocus64 v1 label codec.
+Reference Julia implementation of the ZeroLocus62 v1.1 label codec.
 
-This module implements the ZeroLocus64 v1 specification.
-
-ZeroLocus64 uses Base64URL at the bit level, but presents sextet values through
-the digit-first alphabet `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_`.
-This keeps the implementation on top of Julia's standard `Base64` helpers while
-preserving compact labels such as `1` for `A1 / P1` and `30` for `A3 / P1`.
+This module implements the ZeroLocus62 v1.1 specification using the Base62
+alphabet `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`.
 """
 module ZeroLocus64
 
-using Base64
+using Base62: BASE62_ALPHABET
 
 export Factor,
-    base64url_decode,
-    base64url_encode,
     canonicalize,
     decode_label,
     encode_label,
     is_canonical,
     marked_nodes
 
-const STANDARD_NAME = "ZeroLocus64"
-const RFC4648_BASE64URL = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-const BASE64 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_"
-const BASE64_CHARS = collect(BASE64)
-const BASE64_INDEX =
-    Dict(character => value - 1 for (value, character) in enumerate(BASE64_CHARS))
-const TO_LABEL_ALPHABET = Dict(zip(collect(RFC4648_BASE64URL), BASE64_CHARS))
-const FROM_LABEL_ALPHABET = Dict(zip(BASE64_CHARS, collect(RFC4648_BASE64URL)))
-
-function _build_translate_table(from::String, to::String)
-    table = Vector{UInt8}(0x00:0x7F)
-    for (f, t) in zip(codeunits(from), codeunits(to))
-        table[f+1] = t
-    end
-    return table
-end
-
-const _TO_LABEL_TABLE = _build_translate_table(RFC4648_BASE64URL, BASE64)
-const _FROM_LABEL_TABLE = _build_translate_table(BASE64, RFC4648_BASE64URL)
+const STANDARD_NAME = "ZeroLocus62"
+const BASE62_CHARS = Char.(BASE62_ALPHABET)
+const BASE62 = String(BASE62_CHARS)
+const BASE62_INDEX =
+    Dict(character => value - 1 for (value, character) in enumerate(BASE62_CHARS))
 
 const SEP = '.'
-const ESCAPE = BASE64_CHARS[1]
+const ESCAPE = BASE62_CHARS[1]
 const TYPE_ORDER = Set(['A', 'B', 'C', 'D', 'E', 'F', 'G'])
 const TYPE_TABLE = vcat(
-    [('A', rank) for rank = 1:16],
-    [('B', rank) for rank = 2:16],
-    [('C', rank) for rank = 3:16],
-    [('D', rank) for rank = 4:16],
+    [('A', rank) for rank = 1:15],
+    [('B', rank) for rank = 2:15],
+    [('C', rank) for rank = 3:15],
+    [('D', rank) for rank = 4:15],
     [('E', 6), ('E', 7), ('E', 8)],
     [('F', 4)],
     [('G', 2)],
 )
-const TYPE_CHARS = BASE64_CHARS[2:(1+length(TYPE_TABLE))]
+const TYPE_CHARS = BASE62_CHARS[2:(1+length(TYPE_TABLE))]
 const TYPE_INDEX = Dict(entry => index for (index, entry) in enumerate(TYPE_TABLE))
 const TYPE_CHAR_INDEX =
     Dict(character => index for (index, character) in enumerate(TYPE_CHARS))
 
 valid_type_rank(group::Char, rank::Int) =
-    rank <= 64 && (
+    (
         (group == 'A' && rank >= 1) ||
         (group == 'B' && rank >= 2) ||
         (group == 'C' && rank >= 3) ||
@@ -109,110 +89,65 @@ Return the marked Dynkin nodes as 1-based indices.
 marked_nodes(factor::Factor) =
     [node for node = 1:factor.rank if ((factor.mask >> (node - 1)) & 1) == 1]
 
-translate_alphabet(text::AbstractString, mapping::AbstractDict{Char,Char}) =
-    join(get(mapping, character, character) for character in text)
-
-function _translate_bytes(text::AbstractString, table::Vector{UInt8})
-    src = codeunits(text)
-    out = Vector{UInt8}(undef, length(src))
-    @inbounds for i in eachindex(src)
-        out[i] = table[src[i]+1]
-    end
-    return String(out)
-end
-
-"""
-    base64url_encode(data)
-
-Encode raw bytes as unpadded Base64URL text displayed in the ZeroLocus64
-digit-first alphabet.
-"""
-function base64url_encode(data)
-    encoded = replace(base64encode(data), '+' => '-', '/' => '_')
-    return _translate_bytes(rstrip(encoded, '='), _TO_LABEL_TABLE)
-end
-
-"""
-    base64url_decode(text)
-
-Decode text written in the ZeroLocus64 digit-first alphabet back to raw bytes.
-"""
-function base64url_decode(text::AbstractString)
-    standardized = _translate_bytes(text, _FROM_LABEL_TABLE)
-    canonical = replace(standardized, '-' => '+', '_' => '/')
-    padding = repeat("=", (4 - length(standardized) % 4) % 4)
-    return base64decode(canonical * padding)
-end
-
 function mask_width(rank::Int)
     width = 0
     capacity = big(1)
     while capacity <= (big(1) << rank) - 2
         width += 1
-        capacity *= 64
+        capacity *= 62
     end
     return width
 end
 
-function encode_sextets(value::Integer, width::Int)
+function encode_characters(value::Integer, width::Int)
     width >= 0 || throw(ArgumentError("width must be non-negative"))
     if width == 0
         value == 0 || throw(ArgumentError("non-zero value does not fit in width 0"))
         return ""
     end
-    total_bits = 6 * width
     integer_value = BigInt(value)
-    0 <= integer_value < (big(1) << total_bits) ||
-        throw(ArgumentError("value does not fit in sextet width"))
-    byte_width = cld(total_bits, 8)
-    pad_bits = 8 * byte_width - total_bits
-    shifted = integer_value << pad_bits
-    payload = zeros(UInt8, byte_width)
-    for index = byte_width:-1:1
-        payload[index] = UInt8(shifted % 256)
-        shifted ÷= 256
+    0 <= integer_value < big(62)^width ||
+        throw(ArgumentError("value does not fit in character width"))
+    characters = Vector{Char}(undef, width)
+    for i = width:-1:1
+        characters[i] = BASE62_CHARS[Int(integer_value % 62) + 1]
+        integer_value ÷= 62
     end
-    shifted == 0 || throw(ArgumentError("value does not fit in byte width"))
-    return first(base64url_encode(payload), width)
+    return String(characters)
 end
 
-function decode_sextets(text::AbstractString)
+function decode_characters(text::AbstractString)
     isempty(text) && return big(0)
-    total_bits = 6 * length(text)
-    byte_width = cld(total_bits, 8)
-    pad_bits = 8 * byte_width - total_bits
-    full_width = cld(8 * byte_width, 6)
-    payload = base64url_decode(text * repeat(string(ESCAPE), full_width - length(text)))
-    length(payload) == byte_width ||
-        throw(ArgumentError("decoded payload has incorrect width"))
-    value =
-        foldl((accumulator, byte) -> (accumulator << 8) + Int(byte), payload; init = big(0))
-    return value >> pad_bits
+    value = big(0)
+    for ch in text
+        value = value * 62 + BASE62_INDEX[ch]
+    end
+    return value
 end
 
 function encode_natural(value::Int)
     value > 0 || throw(ArgumentError("natural must be positive"))
     width = 1
-    capacity = big(64)
+    capacity = big(62)
     while value >= capacity
         width += 1
-        capacity *= 64
+        capacity *= 62
     end
-    return encode_sextets(value, width)
+    return encode_characters(value, width)
 end
 
 function encode_factor(factor::Factor)
     validate_factor(factor)
     width = mask_width(factor.rank)
     index = get(TYPE_INDEX, (factor.group, factor.rank), 0)
-    index != 0 && return string(TYPE_CHARS[index], encode_sextets(factor.mask - 1, width))
-    rank_digits = encode_natural(factor.rank)
+    index != 0 && return string(TYPE_CHARS[index], encode_characters(factor.mask - 1, width))
+    rank_characters = encode_natural(factor.rank)
     return string(
         ESCAPE,
         factor.group,
-        encode_sextets(length(rank_digits), 1),
-        rank_digits,
-        encode_sextets(factor.mask - 1, width),
+        encode_characters(length(rank_characters), 1),
+        rank_characters,
+        encode_characters(factor.mask - 1, width),
     )
 end
 
@@ -223,12 +158,12 @@ function decode_factor(text::AbstractString, position::Int)
         position + 2 <= lastindex(text) || throw(ArgumentError("factor escape truncated"))
         group = text[position+1]
         group in TYPE_ORDER || throw(ArgumentError("unknown Dynkin type $(repr(group))"))
-        rank_length = Int(decode_sextets(string(text[position+2])))
+        rank_length = Int(decode_characters(string(text[position+2])))
         rank_length > 0 || throw(ArgumentError("escaped rank length must be positive"))
         start = position + 3
         stop = start + rank_length - 1
         stop <= lastindex(text) || throw(ArgumentError("escaped rank truncated"))
-        rank = Int(decode_sextets(SubString(text, start, stop)))
+        rank = Int(decode_characters(SubString(text, start, stop)))
         position = stop + 1
     else
         index = get(TYPE_CHAR_INDEX, lead_char, 0)
@@ -240,29 +175,29 @@ function decode_factor(text::AbstractString, position::Int)
     validate_type_rank(group, rank)
     stop = position + mask_width(rank) - 1
     stop <= lastindex(text) || throw(ArgumentError("mask truncated"))
-    mask = stop >= position ? decode_sextets(SubString(text, position, stop)) + 1 : big(1)
+    mask = stop >= position ? decode_characters(SubString(text, position, stop)) + 1 : big(1)
     1 <= mask < (big(1) << rank) || throw(ArgumentError("mask out of range"))
     return Factor(group, rank, mask), stop + 1
 end
 
 row_base(row) =
-    max(2, maximum((digit for weights in row for digit in weights); init = 1) + 1)
+    max(2, maximum((coefficient for weights in row for coefficient in weights); init = 1) + 1)
 
 function row_value(row, base::Int)
     value = big(0)
-    for weights in row, digit in weights
-        value = value * base + digit
+    for weights in row, coefficient in weights
+        value = value * base + coefficient
     end
     return value
 end
 
 function summand_width(total_dynkin_rank::Int, base::Int)
-    2 <= base < 64 || throw(ArgumentError("bundle base must lie in 2..63"))
+    base >= 2 || throw(ArgumentError("bundle base must be at least 2"))
     width = 1
-    capacity = big(64)
+    capacity = big(62)
     while capacity < big(base)^total_dynkin_rank
         width += 1
-        capacity *= 64
+        capacity *= 62
     end
     return width
 end
@@ -270,7 +205,17 @@ end
 function encode_summand(row, total_dynkin_rank::Int)
     base = row_base(row)
     width = summand_width(total_dynkin_rank, base)
-    return string(encode_sextets(base, 1), encode_sextets(row_value(row, base), width))
+    value_chars = encode_characters(row_value(row, base), width)
+    if base < 62
+        return string(encode_characters(base, 1), value_chars)
+    end
+    base_characters = encode_natural(base)
+    return string(
+        ESCAPE,
+        encode_characters(length(base_characters), 1),
+        base_characters,
+        value_chars,
+    )
 end
 
 function reorder(
@@ -365,7 +310,7 @@ end
 """
     encode_label(factors, summands)
 
-Encode an ambient product and bundle as a canonical ZeroLocus64 label.
+Encode an ambient product and bundle as a canonical ZeroLocus62 label.
 
 Inputs may be provided in noncanonical order; canonicalization is always applied
 before serialization.
@@ -382,7 +327,7 @@ end
 """
     decode_label(label)
 
-Decode a ZeroLocus64 label into `(factors, summands)`.
+Decode a ZeroLocus62 label into `(factors, summands)`.
 
 The returned `summands` value is a vector of bundle rows, where each row stores
 one weight vector per ambient factor.
@@ -416,20 +361,42 @@ function _decode_label_raw(label::AbstractString)
     summands = Vector{Vector{Vector{Int}}}()
     position = 1
     while position <= lastindex(bundle_text)
-        base_digit = bundle_text[position]
-        base = get(BASE64_INDEX, base_digit, -1)
-        2 <= base < 64 ||
-            throw(ArgumentError("invalid bundle base digit $(repr(base_digit))"))
+        base_character = bundle_text[position]
+        base_value = get(BASE62_INDEX, base_character, -1)
+        base_value >= 0 ||
+            throw(ArgumentError("invalid bundle base character $(repr(base_character))"))
+        local base::Int
+        if base_value == 0
+            # Escaped base
+            position + 1 <= lastindex(bundle_text) ||
+                throw(ArgumentError("escaped base truncated"))
+            base_len = Int(decode_characters(string(bundle_text[position + 1])))
+            base_len > 0 || throw(ArgumentError("escaped base length must be positive"))
+            base_start = position + 2
+            base_stop = base_start + base_len - 1
+            base_stop <= lastindex(bundle_text) ||
+                throw(ArgumentError("escaped base truncated"))
+            base = Int(decode_characters(SubString(bundle_text, base_start, base_stop)))
+            base >= 62 || throw(ArgumentError("escaped base must be at least 62"))
+            position = base_stop + 1
+        elseif base_value == 1
+            throw(ArgumentError("bundle base character 1 is reserved"))
+        else
+            base = base_value
+            2 <= base < 62 ||
+                throw(ArgumentError("invalid bundle base character $(repr(base_character))"))
+            position += 1
+        end
         width = summand_width(total_dynkin_rank, base)
-        start = position + 1
+        start = position
         stop = start + width - 1
         stop <= lastindex(bundle_text) || throw(ArgumentError("summand truncated"))
-        value = decode_sextets(SubString(bundle_text, start, stop))
+        value = decode_characters(SubString(bundle_text, start, stop))
         position = stop + 1
 
-        flat_digits = Vector{Int}(undef, total_dynkin_rank)
+        flat_coefficients = Vector{Int}(undef, total_dynkin_rank)
         for index = total_dynkin_rank:-1:1
-            flat_digits[index] = Int(value % base)
+            flat_coefficients[index] = Int(value % base)
             value ÷= base
         end
         value == 0 || throw(ArgumentError("packed value exceeds range"))
@@ -437,7 +404,7 @@ function _decode_label_raw(label::AbstractString)
         row = Vector{Vector{Int}}()
         offset = 1
         for factor in factors
-            push!(row, flat_digits[offset:(offset+factor.rank-1)])
+            push!(row, flat_coefficients[offset:(offset+factor.rank-1)])
             offset += factor.rank
         end
         push!(summands, row)
@@ -462,7 +429,7 @@ end
 """
     is_canonical(label)
 
-Return `true` if `label` is a valid canonical ZeroLocus64 label.
+Return `true` if `label` is a valid canonical ZeroLocus62 label.
 """
 function is_canonical(label::AbstractString)
     local factors, summands

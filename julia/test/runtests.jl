@@ -61,18 +61,12 @@ const CURATED_CASES = EXAMPLES["curated_cases"]
 const CORPUS_CASES = EXAMPLES["corpus_cases"]
 
 @testset "Constants" begin
-    @test ZeroLocus64.STANDARD_NAME == "ZeroLocus64"
+    @test ZeroLocus64.STANDARD_NAME == "ZeroLocus62"
     @test ZeroLocus64.SEP == '.'
     @test ZeroLocus64.ESCAPE == '0'
-    @test length(ZeroLocus64.BASE64) == 64
-    @test startswith(ZeroLocus64.BASE64, "0123456789")
-    @test endswith(ZeroLocus64.BASE64, "-_")
-end
-
-@testset "Base64URL Helpers" begin
-    payload = UInt8[0xFB, 0xFF]
-    @test base64url_encode(payload) == "-_y"
-    @test base64url_decode("-_y") == payload
+    @test length(ZeroLocus64.BASE62) == 62
+    @test startswith(ZeroLocus64.BASE62, "0123456789")
+    @test endswith(ZeroLocus64.BASE62, "yz")
 end
 
 @testset "Specification Examples" begin
@@ -86,12 +80,13 @@ end
         ("31", [Factor('A', 3, 2)], Vector{Vector{Vector{Int}}}()),
         ("53", [Factor('A', 5, 4)], Vector{Vector{Vector{Int}}}()),
         ("34", [Factor('A', 3, 5)], Vector{Vector{Vector{Int}}}()),
-        ("I0", [Factor('B', 3, 1)], Vector{Vector{Vector{Int}}}()),
-        ("I0.24", [Factor('B', 3, 1)], [[[1, 0, 0]]]),
-        ("KU", [Factor('B', 5, 31)], Vector{Vector{Vector{Int}}}()),
-        ("lF", [Factor('D', 5, 16)], Vector{Vector{Vector{Int}}}()),
-        ("y0_", [Factor('E', 7, 64)], Vector{Vector{Vector{Int}}}()),
-        ("G000", [Factor('A', 16, 1)], Vector{Vector{Vector{Int}}}()),
+        ("H0", [Factor('B', 3, 1)], Vector{Vector{Vector{Int}}}()),
+        ("H0.24", [Factor('B', 3, 1)], [[[1, 0, 0]]]),
+        ("JU", [Factor('B', 5, 31)], Vector{Vector{Vector{Int}}}()),
+        ("iF", [Factor('D', 5, 16)], Vector{Vector{Vector{Int}}}()),
+        ("u11", [Factor('E', 7, 64)], Vector{Vector{Vector{Int}}}()),
+        ("F000", [Factor('A', 15, 1)], Vector{Vector{Vector{Int}}}()),
+        ("0A1G000", [Factor('A', 16, 1)], Vector{Vector{Vector{Int}}}()),
         ("0A1H000", [Factor('A', 17, 1)], Vector{Vector{Vector{Int}}}()),
         (
             "11111.2V",
@@ -172,9 +167,9 @@ end
 @testset "Length Regression" begin
     lengths = sort([Int(case["length"]) for case in CORPUS_CASES])
     @test length(lengths) == 2088
-    @test round(sum(lengths) / length(lengths); digits = 2) < 16.0
-    @test lengths[ceil(Int, 0.5 * length(lengths))] <= 15
-    @test lengths[ceil(Int, 0.9 * length(lengths))] <= 20
+    @test round(sum(lengths) / length(lengths); digits = 2) < 17.0
+    @test lengths[ceil(Int, 0.5 * length(lengths))] <= 16
+    @test lengths[ceil(Int, 0.9 * length(lengths))] <= 22
     @test last(lengths) >= 30
 end
 
@@ -189,9 +184,9 @@ end
     assert_decode_error("0A2H", "escaped rank truncated")
     assert_decode_error("0A1H", "mask truncated")
     assert_decode_error("23", "mask out of range")
-    assert_decode_error("11.1", "invalid bundle base digit")
+    assert_decode_error("11.1", "bundle base character 1 is reserved")
     assert_decode_error("11.2", "summand truncated")
-    assert_decode_error("30.21.", "invalid bundle base digit")
+    assert_decode_error("30.21.", "invalid bundle base character")
 end
 
 @testset "Non-Canonical Labels" begin
@@ -217,4 +212,63 @@ end
     @test is_canonical("") == false
     @test is_canonical(".21") == false
     @test is_canonical("0") == false
+end
+
+@testset "Factor marked_nodes" begin
+    @test marked_nodes(Factor('A', 5, (1 << 0) | (1 << 2) | (1 << 4))) == [1, 3, 5]
+end
+
+@testset "encode_label canonicalizes factor order" begin
+    @test encode_label(
+        [Factor('A', 2, 1), Factor('A', 1, 1)],
+        [[[0, 1], [1]]],
+    ) == "120.25"
+    @test encode_label(
+        [Factor('A', 1, 1), Factor('A', 2, 1)],
+        [[[1], [0, 1]]],
+    ) == "120.25"
+end
+
+@testset "Validation" begin
+    @test encode_label([Factor('A', 1, 1)], [[[1]], [[1]]]) == "1.2121"
+
+    label = encode_label([Factor('A', 1, 1)], [[[42]]])
+    @test startswith(label, "1.")
+    @test decode_label(label) == ([Factor('A', 1, 1)], [[[42]]])
+
+    factors = [Factor('A', 1, 1), Factor('A', 1, 1)]
+    summands = [[[1], [0]], [[5], [0]], [[12], [0]]]
+    label2 = encode_label(factors, summands)
+    @test decode_label(label2) == canonicalize(factors, summands)
+
+    for l in ["H0.24", "iF", "u11", "0A1H000", "0B1H000"]
+        factors_decoded, _ = decode_label(l)
+        @test length(factors_decoded) > 0
+    end
+end
+
+@testset "Escaped Base Encoding" begin
+    factors_61 = [Factor('A', 1, 1)]
+    summands_61 = [[[61]]]
+    @test encode_label(factors_61, summands_61) == "1.0210z"
+    @test decode_label("1.0210z") == canonicalize(factors_61, summands_61)
+
+    factors_100 = [Factor('A', 1, 1)]
+    summands_100 = [[[100]]]
+    @test encode_label(factors_100, summands_100) == "1.021d1c"
+    @test decode_label("1.021d1c") == canonicalize(factors_100, summands_100)
+
+    factors_mixed = [Factor('A', 1, 1)]
+    summands_mixed = [[[61]], [[1]]]
+    @test encode_label(factors_mixed, summands_mixed) == "1.0210z21"
+    @test decode_label("1.0210z21") == canonicalize(factors_mixed, summands_mixed)
+
+    factors_big = [Factor('A', 1, 1)]
+    summands_big = [[[1000]]]
+    label_big = encode_label(factors_big, summands_big)
+    @test decode_label(label_big) == canonicalize(factors_big, summands_big)
+
+    @test is_canonical("1.0210z") == true
+    @test is_canonical("1.021d1c") == true
+    @test is_canonical("1.0210z21") == true
 end

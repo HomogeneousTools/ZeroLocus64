@@ -1,12 +1,13 @@
 name = "ZeroLocus64"
 uuid = "f62862d0-cf9d-4d05-9b2d-cd2c169505b1"
-version = "1.0.0"
+version = "1.1.0"
 authors = ["Pieter Belmans <pieterbelmans@gmail.com>"]
 
 [deps]
-Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
+Base62 = "212a889c-07c6-4e8f-8766-fb0aa2ea40c2"
 
 [compat]
+Base62 = "1.0.0"
 JSON = "0.21"
 julia = "1.9"
 
