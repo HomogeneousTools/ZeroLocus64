@@ -165,7 +165,13 @@ Because all 62 characters of the ZeroLocus62 alphabet are ASCII, the code-unit v
 
 ### 6.5 Canonical validation
 
-A decoded label MUST be in canonical form. After decoding a label into `(factors, summands)`, an implementation MUST re-encode the result and verify that the re-encoded label matches the original input byte for byte. If the label is not canonical, the implementation MUST reject it.
+A decoded label MUST be in canonical form.
+
+- For an ambient-only label, decode the label into `factors`, re-encode those factors as an ambient-only label, and verify that the result matches the original input byte for byte.
+- For a zero-locus label, decode the label into `(factors, summands)`, re-encode that zero-locus data, and verify that the result matches the original input byte for byte.
+- For a degeneracy-locus label, decode the label into `(factors, E_summands, F_summands, k)`, re-encode that degeneracy-locus data, and verify that the result matches the original input byte for byte.
+
+If the re-encoded label does not match the original input byte for byte, the implementation MUST reject it.
 
 ## 7. Ambient encoding
 
