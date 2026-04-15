@@ -4,16 +4,16 @@ import {
   bundleFromWeight,
   dimension,
   partialFlagVariety,
-  rankBundle
+  rankBundle,
 } from "./assets/vendor/lie-js/index.js";
 import {
   decodeDetailedLabel,
-  renderDynkinDiagramSvg
+  renderDynkinDiagramSvg,
 } from "./assets/presentation.js";
 import {
   escapeHtml,
   renderDisplayMath,
-  renderInlineMath
+  renderInlineMath,
 } from "./typesetting.js";
 
 const EXAMPLES = [
@@ -28,7 +28,7 @@ const EXAMPLES = [
   { label: "1120.252A", caption: "equal-factor block" },
   { label: "112020.20M20f", caption: "two equal blocks" },
   { label: "20H0U0.21c", caption: "mixed standard types" },
-  { label: "131H0.20K212", caption: "mixed product with zero row" }
+  { label: "131H0.20K212", caption: "mixed product with zero row" },
 ];
 
 const DEFAULT_LABEL = "H0.24";
@@ -55,7 +55,9 @@ const SITE_BASE_PATH = (() => {
 
 function siteRoute(...segments) {
   const cleanedSegments = segments
-    .filter((segment) => segment !== undefined && segment !== null && segment !== "")
+    .filter(
+      (segment) => segment !== undefined && segment !== null && segment !== "",
+    )
     .map((segment) => String(segment).replace(/^\/+|\/+$/g, ""));
   const base = SITE_BASE_PATH === "/" ? "" : SITE_BASE_PATH.replace(/\/$/, "");
   const suffix = cleanedSegments.join("/");
@@ -125,7 +127,7 @@ function markedWeightLatex(detail, fullWeight) {
   const terms = detail.markedNodes
     .map((node) => ({
       coefficient: BigInt(fullWeight[node - 1] ?? 0),
-      term: weightTermLatex(node, BigInt(fullWeight[node - 1] ?? 0))
+      term: weightTermLatex(node, BigInt(fullWeight[node - 1] ?? 0)),
     }))
     .filter(({ coefficient }) => coefficient !== 0n);
   return formatSignedTerms(terms);
@@ -163,7 +165,7 @@ function globalMarkedWeightLatex(detailList, factorWeights) {
       if (coefficient !== 0n) {
         terms.push({
           coefficient,
-          term: weightTermLatex(globalIndex, coefficient)
+          term: weightTermLatex(globalIndex, coefficient),
         });
       }
       globalIndex += 1;
@@ -179,7 +181,9 @@ function formatSummandTuple(weights) {
 
 function renderBundleDescription(details) {
   const summands = details.summandDetails.map((summand) => {
-    const tupleText = summand.factorWeights.map((entry) => formatSummandTuple(entry.weights)).join("; ");
+    const tupleText = summand.factorWeights
+      .map((entry) => formatSummandTuple(entry.weights))
+      .join("; ");
     return summand.factorWeights.length === 1 ? tupleText : `[${tupleText}]`;
   });
   return summands.join(" &oplus; ");
@@ -213,7 +217,10 @@ function updatePermalink(label) {
 }
 
 function hasExplicitLabelRoute() {
-  return /^\/decode\/[^/]+$/.test(stripBasePath(window.location.pathname)) || new URLSearchParams(window.location.search).has("label");
+  return (
+    /^\/decode\/[^/]+$/.test(stripBasePath(window.location.pathname)) ||
+    new URLSearchParams(window.location.search).has("label")
+  );
 }
 
 function computeGeometry(details) {
@@ -228,38 +235,50 @@ function computeGeometry(details) {
       variety,
       bettiNumbers: bettiNumbers(variety),
       dimension: dimension(variety),
-      ambientDegrees
+      ambientDegrees,
     };
   });
 
-  const determinantDegrees = details.factorDetails.map((detail) => bigIntArray(detail.rank));
+  const determinantDegrees = details.factorDetails.map((detail) =>
+    bigIntArray(detail.rank),
+  );
   let totalRank = 0n;
 
   const summandGeometry = details.summands.map((row) => {
     const factorRanks = row.map((weights, factorIndex) =>
-      rankBundle(bundleFromWeight(factorGeometry[factorIndex].variety, Int32Array.from(weights)))
+      rankBundle(
+        bundleFromWeight(
+          factorGeometry[factorIndex].variety,
+          Int32Array.from(weights),
+        ),
+      ),
     );
     const summandRank = product(factorRanks);
     totalRank += summandRank;
 
     row.forEach((weights, factorIndex) => {
       details.factorDetails[factorIndex].markedNodes.forEach((node) => {
-        determinantDegrees[factorIndex][node - 1] += summandRank * BigInt(weights[node - 1]);
+        determinantDegrees[factorIndex][node - 1] +=
+          summandRank * BigInt(weights[node - 1]);
       });
     });
 
     return {
       factorRanks,
-      rank: summandRank
+      rank: summandRank,
     };
   });
 
-  const zeroLocusDegrees = factorGeometry.map(({ ambientDegrees }, factorIndex) =>
-    ambientDegrees.map((value, index) => value - determinantDegrees[factorIndex][index])
+  const zeroLocusDegrees = factorGeometry.map(
+    ({ ambientDegrees }, factorIndex) =>
+      ambientDegrees.map(
+        (value, index) => value - determinantDegrees[factorIndex][index],
+      ),
   );
 
-  const markedCoefficients = details.factorDetails.flatMap((detail, factorIndex) =>
-    detail.markedNodes.map((node) => zeroLocusDegrees[factorIndex][node - 1])
+  const markedCoefficients = details.factorDetails.flatMap(
+    (detail, factorIndex) =>
+      detail.markedNodes.map((node) => zeroLocusDegrees[factorIndex][node - 1]),
   );
   const allZero = markedCoefficients.every((value) => value === 0n);
   const allPositive = markedCoefficients.every((value) => value > 0n);
@@ -267,30 +286,30 @@ function computeGeometry(details) {
   return {
     ambientBettiNumbers: factorGeometry.reduce(
       (combined, entry) => convolveBettiNumbers(combined, entry.bettiNumbers),
-      [1]
+      [1],
     ),
     factorGeometry,
     determinantDegrees,
     zeroLocusDegrees,
     totalRank,
-    ambientDimension: factorGeometry.reduce((sum, entry) => sum + entry.dimension, 0),
+    ambientDimension: factorGeometry.reduce(
+      (sum, entry) => sum + entry.dimension,
+      0,
+    ),
     summandGeometry,
-    classification:
-      allZero
+    classification: allZero
+      ? {
+          kind: "cy",
+          label: "Calabi-Yau",
+          note: "If the zero locus is smooth of expected dimension, these coefficients vanish, so the canonical bundle is trivial.",
+        }
+      : allPositive
         ? {
-            kind: "cy",
-            label: "Calabi-Yau",
-            note:
-              "If the zero locus is smooth of expected dimension, these coefficients vanish, so the canonical bundle is trivial."
+            kind: "fano",
+            label: "Fano",
+            note: "If the zero locus is smooth of expected dimension, these coefficients are positive on every marked generator, so the anticanonical bundle is ample.",
           }
-        : allPositive
-          ? {
-              kind: "fano",
-              label: "Fano",
-              note:
-                "If the zero locus is smooth of expected dimension, these coefficients are positive on every marked generator, so the anticanonical bundle is ample."
-            }
-          : null
+        : null,
   };
 }
 
@@ -332,13 +351,21 @@ function renderSummandCard(detail, geometry) {
 }
 
 function renderCanonicalSummary(details, geometry) {
-  const detDualGlobal = geometry.determinantDegrees.map((degrees) => degrees.map((value) => -value));
+  const detDualGlobal = geometry.determinantDegrees.map((degrees) =>
+    degrees.map((value) => -value),
+  );
   const ambientClass = globalMarkedWeightLatex(
     details.factorDetails,
-    geometry.factorGeometry.map((entry) => entry.ambientDegrees)
+    geometry.factorGeometry.map((entry) => entry.ambientDegrees),
   );
-  const detDualClass = globalMarkedWeightLatex(details.factorDetails, detDualGlobal);
-  const zeroLocusClass = globalMarkedWeightLatex(details.factorDetails, geometry.zeroLocusDegrees);
+  const detDualClass = globalMarkedWeightLatex(
+    details.factorDetails,
+    detDualGlobal,
+  );
+  const zeroLocusClass = globalMarkedWeightLatex(
+    details.factorDetails,
+    geometry.zeroLocusDegrees,
+  );
 
   canonicalSummary.innerHTML = `
     <article class="formula-card">
@@ -384,28 +411,51 @@ function renderDetails(details) {
     renderMetricCard("Input label", escapeHtml(details.label)),
     renderMetricCard("Ambient factors", String(details.factors.length)),
     renderMetricCard("Ambient dimension", String(geometry.ambientDimension)),
-    renderMetricCard("Betti numbers", escapeHtml(geometry.ambientBettiNumbers.join(", ")))
+    renderMetricCard(
+      "Betti numbers",
+      escapeHtml(geometry.ambientBettiNumbers.join(", ")),
+    ),
   ].join("");
 
   factorCards.innerHTML = details.factorDetails
-    .map((detail, index) => renderFactorCard(detail, geometry.factorGeometry[index], index, markedBasisLabels[index]))
+    .map((detail, index) =>
+      renderFactorCard(
+        detail,
+        geometry.factorGeometry[index],
+        index,
+        markedBasisLabels[index],
+      ),
+    )
     .join("");
 
   bundlePanel.hidden = !hasBundle;
 
   if (hasBundle) {
-    const expectedCodimension = (BigInt(geometry.ambientDimension) - geometry.totalRank).toString();
+    const expectedCodimension = (
+      BigInt(geometry.ambientDimension) - geometry.totalRank
+    ).toString();
     bundleSummary.innerHTML = [
-      renderBundleStatRow("E", `<span class="bundle-description">${escapeHtml(renderBundleDescription(details)).replaceAll("&amp;oplus;", "&oplus;")}</span>`),
-      renderBundleStatRow("Summands", escapeHtml(String(details.summands.length))),
+      renderBundleStatRow(
+        "E",
+        `<span class="bundle-description">${escapeHtml(renderBundleDescription(details)).replaceAll("&amp;oplus;", "&oplus;")}</span>`,
+      ),
+      renderBundleStatRow(
+        "Summands",
+        escapeHtml(String(details.summands.length)),
+      ),
       renderBundleStatRow("Total rank", escapeHtml(String(geometry.totalRank))),
-      renderBundleStatRow("Expected codimension", escapeHtml(expectedCodimension))
+      renderBundleStatRow(
+        "Expected codimension",
+        escapeHtml(expectedCodimension),
+      ),
     ].join("");
 
     renderCanonicalSummary(details, geometry);
 
     summandCards.innerHTML = details.summandDetails
-      .map((detail, index) => renderSummandCard(detail, geometry.summandGeometry[index]))
+      .map((detail, index) =>
+        renderSummandCard(detail, geometry.summandGeometry[index]),
+      )
       .join("");
   } else {
     bundleSummary.innerHTML = "";
@@ -431,14 +481,17 @@ function decodeCurrentLabel({ updateUrl = true, announce = true } = {}) {
       updatePermalink(details.canonicalLabel);
     }
     if (announce) {
-      const successMessage = details.summands.length === 0 ? "Decoded ambient only." : "Decoded successfully.";
-      setStatus(
-        successMessage,
-        "success"
-      );
+      const successMessage =
+        details.summands.length === 0
+          ? "Decoded ambient only."
+          : "Decoded successfully.";
+      setStatus(successMessage, "success");
     }
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Unable to decode label.", "error");
+    setStatus(
+      error instanceof Error ? error.message : "Unable to decode label.",
+      "error",
+    );
     resultGrid.hidden = true;
   }
 }
@@ -449,7 +502,7 @@ exampleButtons.innerHTML = EXAMPLES.map(
       <span class="example-label">${escapeHtml(label)}</span>
       <span class="example-caption">${escapeHtml(caption)}</span>
     </button>
-  `
+  `,
 ).join("");
 
 exampleButtons.addEventListener("click", (event) => {

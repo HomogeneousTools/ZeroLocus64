@@ -5,7 +5,7 @@ const DEFAULT_KATEX_OPTIONS = {
   output: "html",
   strict: "ignore",
   throwOnError: false,
-  trust: false
+  trust: false,
 };
 
 export function escapeHtml(text) {
@@ -20,7 +20,7 @@ export function escapeHtml(text) {
 export function renderMath(latex, options = {}) {
   return katex.renderToString(String(latex).trim(), {
     ...DEFAULT_KATEX_OPTIONS,
-    ...options
+    ...options,
   });
 }
 

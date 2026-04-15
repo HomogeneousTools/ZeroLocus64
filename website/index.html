@@ -12,7 +12,9 @@
         const basePath = pathname
           .replace(/\/decode(?:\/[^/]+)?$/, "/")
           .replace(/\/specification\/?$/, "/");
-        const normalizedBase = basePath.endsWith("/") ? basePath : `${basePath}/`;
+        const normalizedBase = basePath.endsWith("/")
+          ? basePath
+          : `${basePath}/`;
         const base = document.createElement("base");
         base.href = normalizedBase || "/";
         document.head.append(base);
@@ -21,9 +23,22 @@
     <link rel="stylesheet" href="styles.css" />
     <link rel="stylesheet" href="assets/vendor/katex/katex.min.css" />
     <!-- Privacy-friendly analytics by Plausible -->
-    <script async src="https://plausible.io/js/pa-_RTzL5Jq0ZUA1ICKQkL0u.js"></script>
+    <script
+      async
+      src="https://plausible.io/js/pa-_RTzL5Jq0ZUA1ICKQkL0u.js"
+    ></script>
     <script>
-      window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};plausible.init()
+      ((window.plausible =
+        window.plausible ||
+        function () {
+          (plausible.q = plausible.q || []).push(arguments);
+        }),
+        (plausible.init =
+          plausible.init ||
+          function (i) {
+            plausible.o = i || {};
+          }));
+      plausible.init();
     </script>
   </head>
   <body>
@@ -47,12 +62,14 @@
           <p class="eyebrow">Decoder</p>
           <h1>Decode a ZeroLocus62 label</h1>
           <p class="hero-text">
-            ZeroLocus62 is a compact format for zero loci of completely reducible bundles on partial flag
-            varieties. Each label has an ambient part and, after the separator <code>.</code>, an optional
+            ZeroLocus62 is a compact format for zero loci of completely
+            reducible bundles on partial flag varieties. Each label has an
+            ambient part and, after the separator <code>.</code>, an optional
             bundle part.
           </p>
           <p class="hero-text">
-            For the full description of the encoding format, check the <a href="specification">specification</a>.
+            For the full description of the encoding format, check the
+            <a href="specification">specification</a>.
           </p>
 
           <div class="example-strip">
@@ -78,8 +95,14 @@
             </div>
           </form>
 
-          <div id="status-panel" class="status-panel" role="status" aria-live="polite">
-            Enter a label to decode the ambient product before <code>.</code> and the bundle after it.
+          <div
+            id="status-panel"
+            class="status-panel"
+            role="status"
+            aria-live="polite"
+          >
+            Enter a label to decode the ambient product before
+            <code>.</code> and the bundle after it.
           </div>
         </div>
       </section>

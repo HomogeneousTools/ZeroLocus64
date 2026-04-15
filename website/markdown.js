@@ -20,12 +20,12 @@ marked.use({
         return {
           type: "blockMath",
           raw: match[0],
-          text: match[1].trim()
+          text: match[1].trim(),
         };
       },
       renderer(token) {
         return `<div class="math-block-wrap">${renderDisplayMath(token.text)}</div>`;
-      }
+      },
     },
     {
       name: "inlineMath",
@@ -42,14 +42,14 @@ marked.use({
         return {
           type: "inlineMath",
           raw: match[0],
-          text: match[1].trim()
+          text: match[1].trim(),
         };
       },
       renderer(token) {
         return renderInlineMath(token.text);
-      }
-    }
-  ]
+      },
+    },
+  ],
 });
 
 export function renderMarkdown(markdown) {

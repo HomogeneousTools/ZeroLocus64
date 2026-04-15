@@ -39,14 +39,16 @@ function buildToc() {
   toc.innerHTML = headings
     .map(
       (heading) =>
-        `<a class="toc-level-${heading.tagName.toLowerCase()}" href="#${heading.id}">${escapeHtml(heading.textContent ?? "")}</a>`
+        `<a class="toc-level-${heading.tagName.toLowerCase()}" href="#${heading.id}">${escapeHtml(heading.textContent ?? "")}</a>`,
     )
     .join("");
 }
 
 async function loadSpecification() {
   try {
-    const response = await fetch(new URL("./specification.md", import.meta.url));
+    const response = await fetch(
+      new URL("./specification.md", import.meta.url),
+    );
     if (!response.ok) {
       throw new Error(`Unable to fetch specification.md (${response.status})`);
     }
@@ -56,7 +58,12 @@ async function loadSpecification() {
     buildToc();
     statusPanel.hidden = true;
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "Unable to load the specification.", "error");
+    setStatus(
+      error instanceof Error
+        ? error.message
+        : "Unable to load the specification.",
+      "error",
+    );
   }
 }
 
