@@ -12,14 +12,19 @@ def test_repeated_summands_remain_explicit() -> None:
 def test_high_coefficients_choose_larger_bases() -> None:
     label = encode_label([Factor("A", 1, 1)], [[[42]]])
     assert label.startswith("1.")
-    assert decode_label(label) == ([Factor("A", 1, 1)], [[[42]]])
+    result = decode_label(label)
+    assert result["factors"] == [Factor("A", 1, 1)]
+    assert result["summands"] == [[[42]]]
 
 
 def test_multiple_summands_may_use_different_bases() -> None:
     factors = [Factor("A", 1, 1), Factor("A", 1, 1)]
     summands = [[[1], [0]], [[5], [0]], [[12], [0]]]
     label = encode_label(factors, summands)
-    assert decode_label(label) == canonicalize(factors, summands)
+    result = decode_label(label)
+    canon = canonicalize(factors, summands)
+    assert result["factors"] == canon[0]
+    assert result["summands"] == canon[1]
 
 
 def test_invalid_dynkin_type_rank_pairs_are_rejected_on_encode() -> None:
@@ -38,5 +43,5 @@ def test_invalid_dynkin_type_rank_pairs_are_rejected_on_encode() -> None:
     ],
 )
 def test_non_a_and_escape_examples_decode(label: str) -> None:
-    factors, _ = decode_label(label)
-    assert factors
+    result = decode_label(label)
+    assert result["factors"]

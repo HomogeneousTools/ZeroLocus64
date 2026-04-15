@@ -5,6 +5,7 @@ import pytest
 from zerolocus62 import (
     BASE62,
     ESCAPE,
+    LOCUS_SEP,
     SEP,
     STANDARD_NAME,
     Factor,
@@ -83,7 +84,10 @@ def test_spec_examples_are_stable(
     label: str,
 ) -> None:
     assert encode_label(factors, summands) == label
-    assert decode_label(label) == canonicalize(factors, summands)
+    result = decode_label(label)
+    canon = canonicalize(factors, summands)
+    assert result["factors"] == canon[0]
+    assert result.get("summands", result.get("summands_e", [])) == canon[1]
 
 
 def test_encode_label_canonicalizes_factor_order() -> None:
@@ -179,7 +183,10 @@ def test_escaped_base_round_trip_coeff_61() -> None:
     summands = [[[61]]]
     label = encode_label(factors, summands)
     assert label == "1.0210z"
-    assert decode_label(label) == canonicalize(factors, summands)
+    result = decode_label(label)
+    canon = canonicalize(factors, summands)
+    assert result["factors"] == canon[0]
+    assert result["summands"] == canon[1]
 
 
 def test_escaped_base_round_trip_coeff_100() -> None:
@@ -187,7 +194,10 @@ def test_escaped_base_round_trip_coeff_100() -> None:
     summands = [[[100]]]
     label = encode_label(factors, summands)
     assert label == "1.021d1c"
-    assert decode_label(label) == canonicalize(factors, summands)
+    result = decode_label(label)
+    canon = canonicalize(factors, summands)
+    assert result["factors"] == canon[0]
+    assert result["summands"] == canon[1]
 
 
 def test_escaped_base_mixed_standard_and_escaped() -> None:
@@ -195,15 +205,155 @@ def test_escaped_base_mixed_standard_and_escaped() -> None:
     summands = [[[61]], [[1]]]
     label = encode_label(factors, summands)
     assert label == "1.0210z21"
-    assert decode_label(label) == canonicalize(factors, summands)
+    result = decode_label(label)
+    canon = canonicalize(factors, summands)
+    assert result["factors"] == canon[0]
+    assert result["summands"] == canon[1]
 
 
 def test_escaped_base_large_coefficient() -> None:
     factors = [Factor("A", 1, 1)]
     summands = [[[1000]]]
     label = encode_label(factors, summands)
-    decoded = decode_label(label)
-    assert decoded == canonicalize(factors, summands)
+    result = decode_label(label)
+    canon = canonicalize(factors, summands)
+    assert result["factors"] == canon[0]
+    assert result["summands"] == canon[1]
+
+
+# --- Degeneracy locus tests ---
+
+
+def test_locus_sep_constant() -> None:
+    assert LOCUS_SEP == "-"
+
+
+DEGENERACY_SPEC_EXAMPLES = [
+    (
+        "P1 id",
+        [Factor("A", 1, 1)],
+        [[[1]]],
+        [[[1]]],
+        0,
+        "1.21-21-0",
+    ),
+    (
+        "P1xP1",
+        [Factor("A", 1, 1), Factor("A", 1, 1)],
+        [[[1], [0]]],
+        [[[0], [1]]],
+        0,
+        "11.21-22-0",
+    ),
+    (
+        "P3 two-to-one",
+        [Factor("A", 3, 1)],
+        [[[1, 0, 0]], [[1, 0, 0]]],
+        [[[2, 0, 0]]],
+        1,
+        "30.2424-3I-1",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("name", "factors", "summands_e", "summands_f", "k", "label"),
+    DEGENERACY_SPEC_EXAMPLES,
+)
+def test_degeneracy_spec_examples(
+    name: str,
+    factors: list[Factor],
+    summands_e: list[list[list[int]]],
+    summands_f: list[list[list[int]]],
+    k: int,
+    label: str,
+) -> None:
+    assert encode_label(factors, summands_e, summands_f, k) == label
+    result = decode_label(label)
+    assert result["type"] == "degeneracy_locus"
+    assert result["k"] == k
+    assert len(result["summands_e"]) == len(summands_e)
+    assert len(result["summands_f"]) == len(summands_f)
+
+
+def test_degeneracy_decode_returns_tagged_result() -> None:
+    result = decode_label("1.21-21-0")
+    assert result["type"] == "degeneracy_locus"
+    assert len(result["factors"]) == 1
+    assert result["summands_e"] == [[[1]]]
+    assert result["summands_f"] == [[[1]]]
+    assert result["k"] == 0
+
+
+def test_degeneracy_round_trip() -> None:
+    factors = [Factor("A", 2, 1)]
+    summands_e = [[[1, 0]]]
+    summands_f = [[[0, 1]]]
+    k = 0
+    label = encode_label(factors, summands_e, summands_f, k)
+    result = decode_label(label)
+    assert result["type"] == "degeneracy_locus"
+    assert (
+        encode_label(
+            result["factors"], result["summands_e"], result["summands_f"], result["k"]
+        )
+        == label
+    )
+
+
+def test_degeneracy_canonicalize_minimizes_e_then_f() -> None:
+    factors = [Factor("A", 1, 1), Factor("A", 1, 1)]
+    label1 = encode_label(factors, [[[1], [0]]], [[[0], [1]]], 0)
+    label2 = encode_label(factors, [[[0], [1]]], [[[1], [0]]], 0)
+    assert label1 == label2 == "11.21-22-0"
+
+
+def test_degeneracy_rank_bound_gt_zero() -> None:
+    factors = [Factor("A", 3, 1)]
+    label = encode_label(factors, [[[1, 0, 0]]], [[[1, 0, 0]]], 5)
+    assert label.endswith("-5")
+    result = decode_label(label)
+    assert result["k"] == 5
+
+
+def test_degeneracy_rank_bound_62_uses_two_chars() -> None:
+    factors = [Factor("A", 1, 1)]
+    label = encode_label(factors, [[[1]]], [[[1]]], 62)
+    assert label.endswith("-10")
+    result = decode_label(label)
+    assert result["k"] == 62
+
+
+def test_is_canonical_degeneracy() -> None:
+    assert is_canonical("1.21-21-0") is True
+    assert is_canonical("11.21-22-0") is True
+    assert is_canonical("30.2424-3I-1") is True
+
+
+@pytest.mark.parametrize(
+    ("label", "message"),
+    [
+        ("1.21-21-", "rank bound must be non-empty"),
+        ("1.-21-0", "bundle E must be non-empty"),
+        ("1.21--0", "bundle F must be non-empty"),
+        ("1.21-21-21-0", "locus part must contain 0 or 2 dashes"),
+    ],
+)
+def test_invalid_degeneracy_labels(label: str, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        decode_label(label)
+
+
+def test_zero_locus_decode_tagged() -> None:
+    result = decode_label("1.21")
+    assert result["type"] == "zero_locus"
+    assert result["summands"] == [[[1]]]
+
+
+def test_ambient_decode_tagged() -> None:
+    result = decode_label("1")
+    assert result["type"] == "ambient"
+    assert result["summands"] == []
 
 
 def test_is_canonical_on_escaped_base_labels() -> None:

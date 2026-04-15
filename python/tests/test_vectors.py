@@ -29,7 +29,9 @@ def test_curated_vectors_round_trip(curated_cases: list[dict]) -> None:
         factors = factors_from_case(case)
         summands = case["summands"]
         assert encode_label(factors, summands) == case["label"], case["name"]
-        assert decode_label(case["label"]) == (factors, summands), case["name"]
+        result = decode_label(case["label"])
+        assert result["factors"] == factors, case["name"]
+        assert result["summands"] == summands, case["name"]
 
 
 def test_corpus_vectors_are_extensive(corpus_cases: list[dict]) -> None:
@@ -61,7 +63,9 @@ def test_full_corpus_round_trip(corpus_cases: list[dict]) -> None:
         factors = factors_from_case(case)
         summands = case["summands"]
         assert encode_label(factors, summands) == case["label"], case["index"]
-        assert decode_label(case["label"]) == (factors, summands), case["index"]
+        result = decode_label(case["label"])
+        assert result["factors"] == factors, case["index"]
+        assert result["summands"] == summands, case["index"]
 
 
 def test_corpus_length_fields_match_labels(corpus_cases: list[dict]) -> None:

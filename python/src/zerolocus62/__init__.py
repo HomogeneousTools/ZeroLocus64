@@ -20,6 +20,7 @@ BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 BASE62_INDEX = {char: value for value, char in enumerate(BASE62)}
 
 SEP = "."
+LOCUS_SEP = "-"
 ESCAPE = BASE62[0]
 TYPE_ORDER = "ABCDEFG"
 TYPE_TABLE: list[tuple[str, int]] = (
@@ -223,93 +224,17 @@ def _encode_summand(row: list[list[int]], total_dynkin_rank: int) -> str:
     )
 
 
-def _reorder(
-    order: list[int], factors: list[Factor], summands: list[list[list[int]]]
-) -> tuple[list[Factor], list[list[list[int]]]]:
-    return [factors[index] for index in order], [
-        [row[index] for index in order] for row in summands
-    ]
+def _encode_bundle_text(summands: list[list[list[int]]], total_dynkin_rank: int) -> str:
+    return "".join(_encode_summand(row, total_dynkin_rank) for row in summands)
 
 
-def canonicalize(
-    factors: list[Factor], summands: list[list[list[int]]]
-) -> tuple[list[Factor], list[list[list[int]]]]:
-    """Return the canonical ambient order and canonical summand ordering.
+def _decode_bundle_text(
+    bundle_text: str,
+    factors: list[Factor],
+    total_dynkin_rank: int,
+) -> list[list[list[int]]]:
+    """Decode a bundle text segment into summand rows."""
 
-    Distinct factors are sorted by their ambient codes. Equal-factor blocks are
-    then permuted only as far as needed to minimize the sorted encoded summand
-    rows.
-    """
-
-    factors = list(factors)
-    summands = [list(row) for row in summands]
-    initial_order = sorted(
-        range(len(factors)), key=lambda index: _encode_factor(factors[index])
-    )
-    factors, summands = _reorder(initial_order, factors, summands)
-    total_dynkin_rank = sum(factor.rank for factor in factors)
-    factor_codes = [_encode_factor(factor) for factor in factors]
-    equal_factor_blocks: list[list[tuple[int, ...]]] = []
-    start = 0
-    while start < len(factors):
-        stop = start + 1
-        while stop < len(factors) and factor_codes[stop] == factor_codes[start]:
-            stop += 1
-        block = tuple(range(start, stop))
-        equal_factor_blocks.append(
-            [block] if len(block) == 1 else list(permutations(block))
-        )
-        start = stop
-    best_signature: tuple[str, ...] | None = None
-    best_order = list(range(len(factors)))
-    for choice in product(*equal_factor_blocks):
-        trial_order = [index for block in choice for index in block]
-        _, reordered_rows = _reorder(trial_order, factors, summands)
-        signature = tuple(
-            sorted(_encode_summand(row, total_dynkin_rank) for row in reordered_rows)
-        )
-        if best_signature is None or signature < best_signature:
-            best_signature = signature
-            best_order = trial_order
-    factors, summands = _reorder(best_order, factors, summands)
-    summands.sort(key=lambda row: _encode_summand(row, total_dynkin_rank))
-    return factors, summands
-
-
-def encode_label(factors: list[Factor], summands: list[list[list[int]]]) -> str:
-    """Encode an ambient product and bundle as a canonical ZeroLocus62 label.
-
-    Inputs may be supplied in noncanonical order; canonicalization is always
-    applied before serialization.
-    """
-
-    factors, summands = canonicalize(factors, summands)
-    ambient_text = "".join(_encode_factor(factor) for factor in factors)
-    if not summands:
-        return ambient_text
-    total_dynkin_rank = sum(factor.rank for factor in factors)
-    bundle_text = "".join(_encode_summand(row, total_dynkin_rank) for row in summands)
-    return ambient_text + SEP + bundle_text
-
-
-def _decode_label_raw(label: str) -> tuple[list[Factor], list[list[list[int]]]]:
-    """Decode without canonical validation."""
-
-    ambient_text, separator, bundle_text = label.partition(SEP)
-    if not ambient_text:
-        raise ValueError("ambient part must be non-empty")
-    if separator and not bundle_text:
-        raise ValueError("separator requires a non-empty bundle")
-
-    factors: list[Factor] = []
-    position = 0
-    while position < len(ambient_text):
-        factor, position = _decode_factor(ambient_text, position)
-        factors.append(factor)
-    if not separator:
-        return factors, []
-
-    total_dynkin_rank = sum(factor.rank for factor in factors)
     summands: list[list[list[int]]] = []
     position = 0
     while position < len(bundle_text):
@@ -318,7 +243,6 @@ def _decode_label_raw(label: str) -> tuple[list[Factor], list[list[list[int]]]]:
         if base_value < 0:
             raise ValueError(f"invalid bundle base character {base_character!r}")
         if base_value == 0:
-            # Escaped base
             if position + 2 > len(bundle_text):
                 raise ValueError("escaped base truncated")
             base_len = _decode_characters(bundle_text[position + 1])
@@ -360,30 +284,220 @@ def _decode_label_raw(label: str) -> tuple[list[Factor], list[list[list[int]]]]:
             row.append(flat_coefficients[offset : offset + factor.rank])
             offset += factor.rank
         summands.append(row)
+    return summands
+
+
+def _encode_rank_bound(k: int) -> str:
+    if k < 0:
+        raise ValueError("rank bound must be non-negative")
+    if k == 0:
+        return BASE62[0]
+    characters: list[str] = []
+    remaining = k
+    while remaining > 0:
+        characters.append(BASE62[remaining % 62])
+        remaining //= 62
+    return "".join(reversed(characters))
+
+
+def _decode_rank_bound(text: str) -> int:
+    if not text:
+        raise ValueError("rank bound text must be non-empty")
+    if len(text) > 1 and BASE62_INDEX.get(text[0], -1) == 0:
+        raise ValueError("rank bound has leading zeros")
+    value = 0
+    for char in text:
+        char_value = BASE62_INDEX.get(char, -1)
+        if char_value < 0:
+            raise ValueError(f"invalid Base62 character in rank bound {char!r}")
+        value = value * 62 + char_value
+    return value
+
+
+def _reorder(
+    order: list[int], factors: list[Factor], summands: list[list[list[int]]]
+) -> tuple[list[Factor], list[list[list[int]]]]:
+    return [factors[index] for index in order], [
+        [row[index] for index in order] for row in summands
+    ]
+
+
+def canonicalize(
+    factors: list[Factor],
+    summands: list[list[list[int]]],
+    summands_f: list[list[list[int]]] | None = None,
+    k: int | None = None,
+) -> tuple[list[Factor], ...]:
+    """Return the canonical ambient order and canonical summand ordering.
+
+    For degeneracy loci, pass *summands_f* and *k*. Returns a 4-tuple
+    ``(factors, summands_e, summands_f, k)`` in that case.
+    """
+
+    is_degeneracy = summands_f is not None
+    factors = list(factors)
+    summands = [list(row) for row in summands]
+    if is_degeneracy:
+        summands_f = [list(row) for row in summands_f]
+    initial_order = sorted(
+        range(len(factors)), key=lambda index: _encode_factor(factors[index])
+    )
+    factors, summands = _reorder(initial_order, factors, summands)
+    if is_degeneracy:
+        _, summands_f = _reorder(initial_order, factors, summands_f)
+    total_dynkin_rank = sum(factor.rank for factor in factors)
+    factor_codes = [_encode_factor(factor) for factor in factors]
+    equal_factor_blocks: list[list[tuple[int, ...]]] = []
+    start = 0
+    while start < len(factors):
+        stop = start + 1
+        while stop < len(factors) and factor_codes[stop] == factor_codes[start]:
+            stop += 1
+        block = tuple(range(start, stop))
+        equal_factor_blocks.append(
+            [block] if len(block) == 1 else list(permutations(block))
+        )
+        start = stop
+
+    def sorted_sig(rows):
+        return tuple(sorted(_encode_summand(row, total_dynkin_rank) for row in rows))
+
+    best_signature = None
+    best_order = list(range(len(factors)))
+    for choice in product(*equal_factor_blocks):
+        trial_order = [index for block in choice for index in block]
+        _, reordered_e = _reorder(trial_order, factors, summands)
+        signature = (sorted_sig(reordered_e),)
+        if is_degeneracy:
+            _, reordered_f = _reorder(trial_order, factors, summands_f)
+            signature = (sorted_sig(reordered_e), sorted_sig(reordered_f))
+        if best_signature is None or signature < best_signature:
+            best_signature = signature
+            best_order = trial_order
+    if is_degeneracy:
+        _, summands_f = _reorder(best_order, factors, summands_f)
+    factors, summands = _reorder(best_order, factors, summands)
+    summands.sort(key=lambda row: _encode_summand(row, total_dynkin_rank))
+    if is_degeneracy:
+        summands_f.sort(key=lambda row: _encode_summand(row, total_dynkin_rank))
+        return factors, summands, summands_f, k
     return factors, summands
 
 
-def decode_label(label: str) -> tuple[list[Factor], list[list[list[int]]]]:
-    """Decode a ZeroLocus62 label into ``(factors, summands)``.
+def encode_label(
+    factors: list[Factor],
+    summands: list[list[list[int]]],
+    summands_f: list[list[list[int]]] | None = None,
+    k: int | None = None,
+) -> str:
+    """Encode an ambient product and bundle as a canonical ZeroLocus62 label.
 
-    The returned ``summands`` value is a list of bundle rows, where each row
-    stores one weight vector per ambient factor.
+    For degeneracy loci, pass *summands_f* and *k*.
+    """
+
+    is_degeneracy = summands_f is not None
+    result = canonicalize(factors, summands, summands_f, k)
+    canon_factors = result[0]
+    canon_summands = result[1]
+    ambient_text = "".join(_encode_factor(factor) for factor in canon_factors)
+    if not is_degeneracy and not canon_summands:
+        return ambient_text
+    total_dynkin_rank = sum(factor.rank for factor in canon_factors)
+    if is_degeneracy:
+        canon_summands_f = result[2]
+        return (
+            ambient_text
+            + SEP
+            + _encode_bundle_text(canon_summands, total_dynkin_rank)
+            + LOCUS_SEP
+            + _encode_bundle_text(canon_summands_f, total_dynkin_rank)
+            + LOCUS_SEP
+            + _encode_rank_bound(k)
+        )
+    return ambient_text + SEP + _encode_bundle_text(canon_summands, total_dynkin_rank)
+
+
+def _decode_label_raw(label: str) -> dict:
+    """Decode without canonical validation.  Returns a tagged dict."""
+
+    ambient_text, separator, locus_text = label.partition(SEP)
+    if not ambient_text:
+        raise ValueError("ambient part must be non-empty")
+    if separator and not locus_text:
+        raise ValueError("separator requires a non-empty bundle")
+
+    factors: list[Factor] = []
+    position = 0
+    while position < len(ambient_text):
+        factor, position = _decode_factor(ambient_text, position)
+        factors.append(factor)
+    if not separator:
+        return {"type": "ambient", "factors": factors, "summands": []}
+
+    total_dynkin_rank = sum(factor.rank for factor in factors)
+    locus_parts = locus_text.split(LOCUS_SEP)
+
+    if len(locus_parts) == 1:
+        summands = _decode_bundle_text(locus_text, factors, total_dynkin_rank)
+        return {"type": "zero_locus", "factors": factors, "summands": summands}
+
+    if len(locus_parts) != 3:
+        raise ValueError(
+            f"locus part must contain 0 or 2 dashes, got {len(locus_parts) - 1}"
+        )
+
+    bundle_text_e, bundle_text_f, rank_bound_text = locus_parts
+    if not bundle_text_e:
+        raise ValueError("bundle E must be non-empty")
+    if not bundle_text_f:
+        raise ValueError("bundle F must be non-empty")
+    if not rank_bound_text:
+        raise ValueError("rank bound must be non-empty")
+
+    summands_e = _decode_bundle_text(bundle_text_e, factors, total_dynkin_rank)
+    summands_f = _decode_bundle_text(bundle_text_f, factors, total_dynkin_rank)
+    k = _decode_rank_bound(rank_bound_text)
+
+    return {
+        "type": "degeneracy_locus",
+        "factors": factors,
+        "summands_e": summands_e,
+        "summands_f": summands_f,
+        "k": k,
+    }
+
+
+def decode_label(label: str) -> dict:
+    """Decode a ZeroLocus62 label into a tagged dict.
+
+    Zero-locus labels return ``{"type": "zero_locus", "factors": ..., "summands": ...}``.
+    Degeneracy-locus labels return ``{"type": "degeneracy_locus", "factors": ...,
+    "summands_e": ..., "summands_f": ..., "k": ...}``.
 
     Raises ``ValueError`` if the label is not in canonical form.
     """
 
-    factors, summands = _decode_label_raw(label)
-    if encode_label(factors, summands) != label:
+    result = _decode_label_raw(label)
+    if result["type"] == "degeneracy_locus":
+        re_encoded = encode_label(
+            result["factors"],
+            result["summands_e"],
+            result["summands_f"],
+            result["k"],
+        )
+    else:
+        re_encoded = encode_label(result["factors"], result["summands"])
+    if re_encoded != label:
         raise ValueError("label is not in canonical form")
-    return factors, summands
+    return result
 
 
 def is_canonical(label: str) -> bool:
     """Return ``True`` if *label* is a valid canonical ZeroLocus62 label."""
 
     try:
-        factors, summands = _decode_label_raw(label)
-        return encode_label(factors, summands) == label
+        decode_label(label)
+        return True
     except ValueError:
         return False
 
@@ -393,6 +507,7 @@ __all__ = [
     "BASE62_INDEX",
     "ESCAPE",
     "Factor",
+    "LOCUS_SEP",
     "SEP",
     "STANDARD_NAME",
     "TYPE_CHARS",
