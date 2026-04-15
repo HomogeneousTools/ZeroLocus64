@@ -221,7 +221,9 @@ function decodeCharacters(text) {
   for (const character of text) {
     const charValue = BASE62_INDEX[character];
     if (charValue === undefined) {
-      throw new RangeError(`invalid Base62 character ${JSON.stringify(character)}`);
+      throw new RangeError(
+        `invalid Base62 character ${JSON.stringify(character)}`,
+      );
     }
     value = value * 62n + BigInt(charValue);
   }
@@ -302,7 +304,9 @@ function decodeFactor(text, position) {
     throw new RangeError("mask truncated");
   }
   const mask =
-    end > nextPosition ? decodeCharacters(text.slice(nextPosition, end)) + 1n : 1n;
+    end > nextPosition
+      ? decodeCharacters(text.slice(nextPosition, end)) + 1n
+      : 1n;
   if (!(1n <= mask && mask < 1n << BigInt(rank))) {
     throw new RangeError("mask out of range");
   }

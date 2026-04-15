@@ -219,14 +219,8 @@ end
 end
 
 @testset "encode_label canonicalizes factor order" begin
-    @test encode_label(
-        [Factor('A', 2, 1), Factor('A', 1, 1)],
-        [[[0, 1], [1]]],
-    ) == "120.25"
-    @test encode_label(
-        [Factor('A', 1, 1), Factor('A', 2, 1)],
-        [[[1], [0, 1]]],
-    ) == "120.25"
+    @test encode_label([Factor('A', 2, 1), Factor('A', 1, 1)], [[[0, 1], [1]]]) == "120.25"
+    @test encode_label([Factor('A', 1, 1), Factor('A', 2, 1)], [[[1], [0, 1]]]) == "120.25"
 end
 
 @testset "Validation" begin

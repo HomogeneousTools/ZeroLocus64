@@ -10,12 +10,7 @@ module ZeroLocus64
 
 using Base62: BASE62_ALPHABET
 
-export Factor,
-    canonicalize,
-    decode_label,
-    encode_label,
-    is_canonical,
-    marked_nodes
+export Factor, canonicalize, decode_label, encode_label, is_canonical, marked_nodes
 
 const STANDARD_NAME = "ZeroLocus62"
 const BASE62_CHARS = Char.(BASE62_ALPHABET)
@@ -40,16 +35,15 @@ const TYPE_INDEX = Dict(entry => index for (index, entry) in enumerate(TYPE_TABL
 const TYPE_CHAR_INDEX =
     Dict(character => index for (index, character) in enumerate(TYPE_CHARS))
 
-valid_type_rank(group::Char, rank::Int) =
-    (
-        (group == 'A' && rank >= 1) ||
-        (group == 'B' && rank >= 2) ||
-        (group == 'C' && rank >= 3) ||
-        (group == 'D' && rank >= 4) ||
-        (group == 'E' && rank in (6, 7, 8)) ||
-        (group == 'F' && rank == 4) ||
-        (group == 'G' && rank == 2)
-    )
+valid_type_rank(group::Char, rank::Int) = (
+    (group == 'A' && rank >= 1) ||
+    (group == 'B' && rank >= 2) ||
+    (group == 'C' && rank >= 3) ||
+    (group == 'D' && rank >= 4) ||
+    (group == 'E' && rank in (6, 7, 8)) ||
+    (group == 'F' && rank == 4) ||
+    (group == 'G' && rank == 2)
+)
 
 function validate_type_rank(group::Char, rank::Int)
     valid_type_rank(group, rank) ||
@@ -72,8 +66,7 @@ end
 
 Base.:(==)(a::Factor, b::Factor) =
     a.group == b.group && a.rank == b.rank && a.mask == b.mask
-Base.hash(a::Factor, h::UInt) =
-    hash(a.mask, hash(a.rank, hash(a.group, h)))
+Base.hash(a::Factor, h::UInt) = hash(a.mask, hash(a.rank, hash(a.group, h)))
 
 function validate_factor(factor::Factor)
     validate_type_rank(factor.group, factor.rank)
@@ -110,7 +103,7 @@ function encode_characters(value::Integer, width::Int)
         throw(ArgumentError("value does not fit in character width"))
     characters = Vector{Char}(undef, width)
     for i = width:-1:1
-        characters[i] = BASE62_CHARS[Int(integer_value % 62) + 1]
+        characters[i] = BASE62_CHARS[Int(integer_value%62)+1]
         integer_value ÷= 62
     end
     return String(characters)
@@ -140,7 +133,8 @@ function encode_factor(factor::Factor)
     validate_factor(factor)
     width = mask_width(factor.rank)
     index = get(TYPE_INDEX, (factor.group, factor.rank), 0)
-    index != 0 && return string(TYPE_CHARS[index], encode_characters(factor.mask - 1, width))
+    index != 0 &&
+        return string(TYPE_CHARS[index], encode_characters(factor.mask - 1, width))
     rank_characters = encode_natural(factor.rank)
     return string(
         ESCAPE,
@@ -175,13 +169,16 @@ function decode_factor(text::AbstractString, position::Int)
     validate_type_rank(group, rank)
     stop = position + mask_width(rank) - 1
     stop <= lastindex(text) || throw(ArgumentError("mask truncated"))
-    mask = stop >= position ? decode_characters(SubString(text, position, stop)) + 1 : big(1)
+    mask =
+        stop >= position ? decode_characters(SubString(text, position, stop)) + 1 : big(1)
     1 <= mask < (big(1) << rank) || throw(ArgumentError("mask out of range"))
     return Factor(group, rank, mask), stop + 1
 end
 
-row_base(row) =
-    max(2, maximum((coefficient for weights in row for coefficient in weights); init = 1) + 1)
+row_base(row) = max(
+    2,
+    maximum((coefficient for weights in row for coefficient in weights); init = 1) + 1,
+)
 
 function row_value(row, base::Int)
     value = big(0)
@@ -370,7 +367,7 @@ function _decode_label_raw(label::AbstractString)
             # Escaped base
             position + 1 <= lastindex(bundle_text) ||
                 throw(ArgumentError("escaped base truncated"))
-            base_len = Int(decode_characters(string(bundle_text[position + 1])))
+            base_len = Int(decode_characters(string(bundle_text[position+1])))
             base_len > 0 || throw(ArgumentError("escaped base length must be positive"))
             base_start = position + 2
             base_stop = base_start + base_len - 1
@@ -383,8 +380,9 @@ function _decode_label_raw(label::AbstractString)
             throw(ArgumentError("bundle base character 1 is reserved"))
         else
             base = base_value
-            2 <= base < 62 ||
-                throw(ArgumentError("invalid bundle base character $(repr(base_character))"))
+            2 <= base < 62 || throw(
+                ArgumentError("invalid bundle base character $(repr(base_character))"),
+            )
             position += 1
         end
         width = summand_width(total_dynkin_rank, base)

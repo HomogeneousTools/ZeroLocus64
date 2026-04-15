@@ -48,7 +48,9 @@ export function formatFundamentalWeightExpression(weights) {
       return;
     }
     terms.push(
-      coefficient === 1 ? `omega${index + 1}` : `${coefficient} omega${index + 1}`,
+      coefficient === 1
+        ? `omega${index + 1}`
+        : `${coefficient} omega${index + 1}`,
     );
   });
   return terms.length === 0 ? "0" : terms.join(" + ");
@@ -61,7 +63,9 @@ export function formatFundamentalWeightLatex(weights) {
       return;
     }
     terms.push(
-      coefficient === 1 ? `\\omega_{${index + 1}}` : `${coefficient}\\omega_{${index + 1}}`,
+      coefficient === 1
+        ? `\\omega_{${index + 1}}`
+        : `${coefficient}\\omega_{${index + 1}}`,
     );
   });
   return terms.length === 0 ? "0" : terms.join(" + ");

@@ -181,7 +181,10 @@ def _decode_factor(text: str, position: int) -> tuple[Factor, int]:
 
 
 def _row_base(row: list[list[int]]) -> int:
-    return max(2, max((coefficient for weights in row for coefficient in weights), default=1) + 1)
+    return max(
+        2,
+        max((coefficient for weights in row for coefficient in weights), default=1) + 1,
+    )
 
 
 def _row_value(row: list[list[int]], base: int) -> int:
