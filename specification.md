@@ -296,6 +296,12 @@ $$
 62^k \ge B^W.
 $$
 
+Consequently, every valid summand row satisfies
+
+$$
+0 \le v < B^W.
+$$
+
 When `B` is in the range `2..61`, the base character encodes `B` directly as a single character. Character values `0` and `1` (representing integers 0 and 1) MUST NOT appear as a standard base character.
 
 When `B >= 62`, the summand row uses an escaped base encoding:
@@ -311,7 +317,7 @@ where:
 - `<base_len>` is one character giving the number of characters used by `<base_characters>`;
 - `<value_characters>` has the same width as above.
 
-Because `<base_len>` is a single character, the maximum encodable base is $62^{61} - 1$.
+Because `<base_len>` is a single character, the base value can occupy at most 61 characters. Therefore an escaped base is encodable only when the shortest representation of `B` uses at most 61 characters, equivalently when `B \le 62^{61} - 1`. An encoder MUST reject any summand row outside that bound. This is a hard format limit.
 
 ### 8.2 Multiple summands
 
@@ -321,7 +327,7 @@ $$
 E_1 \oplus \cdots \oplus E_t,
 $$
 
-then each summand row is encoded separately. If the encoded rows are `s_1, ..., s_t`, their lexicographically sorted order `s_(1) <= ... <= s_(t)` is concatenated directly to form the locus part:
+then $t$ MUST be positive and each summand row is encoded separately. Bundles with zero summands are not representable in the wire format. For zero loci, the empty-bundle case is represented by the ambient-only form rather than by an empty bundle encoding. If the encoded rows are `s_1, ..., s_t`, their lexicographically sorted order `s_(1) <= ... <= s_(t)` is concatenated directly to form the locus part:
 
 $$
 s_{(1)} \cdots s_{(t)}.
@@ -348,7 +354,7 @@ For a degeneracy locus with bundles $E$, $F$ and rank bound $k$, the locus part 
 
 where `<bundle_E>` and `<bundle_F>` are each the concatenation of their sorted encoded summand rows (§8.2), and `<k>` is the rank bound encoding (§8.3).
 
-If $E$ has no summands, `<bundle_E>` is the empty string, but since an empty segment before `-` is forbidden (§4), a degeneracy locus with an empty source bundle is not representable. The same applies to $F$. Both bundles MUST have at least one summand.
+If $E$ has no summands, `<bundle_E>` is the empty string, but since an empty segment before `-` is forbidden (§4), a degeneracy locus with an empty source bundle is not representable. The same applies to $F$. As in §8.2, both bundles MUST have at least one summand.
 
 ## 9. Decoding
 
@@ -370,8 +376,8 @@ To decode a label:
    - validate that `B >= 62`;
 8. otherwise, decode the character as `B` and validate `2 <= B <= 61`;
 9. determine the width of the value field from `B` and `W`;
-10. decode the packed integer;
-11. unpack it into `W` coefficients in base `B`;
+10. decode the packed integer `v`;
+11. unpack `v` into `W` coefficients in base `B`; validate that no remainder remains after the `W` coefficients are extracted, equivalently that `0 <= v < B^W`;
 12. split those coefficients by ambient-factor ranks to recover one bundle summand row; repeat from step 6 until the locus text is exhausted;
 13. **(degeneracy locus)** split the locus part at the two `-` characters to obtain `E_text`, `F_text`, and `k_text`;
 14. validate that all three segments are non-empty;
@@ -392,17 +398,20 @@ An implementation MUST reject at least the following malformed conditions:
 - an escaped factor with an unknown Dynkin type;
 - an escaped factor with a mathematically impossible Dynkin type/rank pair;
 - an escaped factor with a non-positive encoded rank length;
+- an escaped factor whose shortest rank representation would require more than 61 characters;
 - truncated escaped rank characters;
 - truncated mask characters;
 - a decoded mask outside the valid range `1 <= mask < 2^rank`;
 - a standard (non-escaped) bundle base character outside the range `2..61`;
 - a bundle base character with Base62 value 1 (reserved);
 - an escaped bundle base with a non-positive base length;
+- an escaped bundle base whose shortest representation would require more than 61 characters;
 - truncated escaped base characters;
 - an escaped bundle base with decoded value less than 62;
 - a truncated summand field;
-- a packed summand value that exceeds the valid range for its width;
+- a packed summand value `v` with `v >= B^W` (equivalently, a non-zero remainder after extracting `W` base-`B` coefficients);
 - a summand row whose decoded coefficient vector does not match the ambient structure (encoder-side obligation);
+- an attempt to encode a zero locus with zero summands; the empty-bundle case MUST be represented by the ambient-only form instead;
 - a locus part containing any number of `-` characters other than 0 or 2;
 - a degeneracy locus with an empty `E`, `F`, or `k` segment;
 - a rank bound `k` with leading zeros (a multi-character `k` whose first character has Base62 value 0);
