@@ -1,9 +1,3 @@
-import base62 from "base62";
-
-base62.setCharacterSet(
-  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
-);
-
 export const STANDARD_NAME = "ZeroLocus62";
 export const BASE62 =
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -198,9 +192,6 @@ function encodeCharacters(value, width) {
   if (!(0n <= integerValue && integerValue < 62n ** BigInt(width))) {
     throw new RangeError("value does not fit in character width");
   }
-  if (integerValue <= BigInt(Number.MAX_SAFE_INTEGER)) {
-    return base62.encode(Number(integerValue)).padStart(width, "0");
-  }
   let remaining = integerValue;
   const characters = Array.from({ length: width }, () => "0");
   for (let index = width - 1; index >= 0; index -= 1) {
@@ -211,12 +202,6 @@ function encodeCharacters(value, width) {
 }
 
 function decodeCharacters(text) {
-  if (text.length === 0) {
-    return 0n;
-  }
-  if (text.length <= 8) {
-    return BigInt(base62.decode(text));
-  }
   let value = 0n;
   for (const character of text) {
     const charValue = BASE62_INDEX[character];

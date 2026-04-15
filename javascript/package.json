@@ -23,7 +23,6 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "base62": "^2.0.2",
     "katex": "0.16.45",
     "lie-js": "github:HomogeneousTools/Lie.js#37ae612eedebc2f4a002252b670f2fc9d6a7119f",
     "marked": "17.0.6"
