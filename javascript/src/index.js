@@ -2,6 +2,7 @@ export const STANDARD_NAME = "ZeroLocus62";
 export const BASE62 =
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 export const SEP = ".";
+export const LOCUS_SEP = "-";
 export const ESCAPE = BASE62[0];
 export const TYPE_ORDER = "ABCDEFG";
 
@@ -112,6 +113,16 @@ function compareLexicographic(left, right) {
 function compareStringTuples(left, right) {
   for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
     const comparison = compareLexicographic(left[index], right[index]);
+    if (comparison !== 0) {
+      return comparison;
+    }
+  }
+  return left.length - right.length;
+}
+
+function comparePairSignatures(left, right) {
+  for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
+    const comparison = compareStringTuples(left[index], right[index]);
     if (comparison !== 0) {
       return comparison;
     }
@@ -350,173 +361,50 @@ function encodeSummand(row, totalDynkinRank) {
   );
 }
 
-function reorder(order, factors, summands) {
-  return [
-    order.map((index) => factors[index]),
-    summands.map((row) => order.map((index) => row[index].slice())),
-  ];
+function encodeRankBound(k) {
+  const value = toBigInt(k, "rank bound");
+  if (value < 0n) {
+    throw new RangeError("rank bound must be non-negative");
+  }
+  if (value === 0n) {
+    return BASE62[0];
+  }
+  let remaining = value;
+  const characters = [];
+  while (remaining > 0n) {
+    characters.push(BASE62[Number(remaining % 62n)]);
+    remaining /= 62n;
+  }
+  return characters.reverse().join("");
 }
 
-function permutations(indices) {
-  if (indices.length <= 1) {
-    return [indices.slice()];
+function decodeRankBound(text) {
+  if (!text) {
+    throw new RangeError("rank bound text must be non-empty");
   }
-  const result = [];
-  const working = indices.slice();
-  function visit(position) {
-    if (position === working.length) {
-      result.push(working.slice());
-      return;
-    }
-    for (let swapIndex = position; swapIndex < working.length; swapIndex += 1) {
-      [working[position], working[swapIndex]] = [
-        working[swapIndex],
-        working[position],
-      ];
-      visit(position + 1);
-      [working[position], working[swapIndex]] = [
-        working[swapIndex],
-        working[position],
-      ];
-    }
+  if (text.length > 1 && BASE62_INDEX[text[0]] === 0) {
+    throw new RangeError("rank bound has leading zeros");
   }
-  visit(0);
-  return result;
-}
-
-export function canonicalize(factors, summands) {
-  const normalizedFactors = factors.map((factor) => coerceFactor(factor));
-  const normalizedSummands = normalizeSummands(summands, normalizedFactors);
-  const initialOrder = normalizedFactors
-    .map((_, index) => index)
-    .sort((left, right) =>
-      compareLexicographic(
-        encodeFactor(normalizedFactors[left]),
-        encodeFactor(normalizedFactors[right]),
-      ),
-    );
-  let [orderedFactors, orderedSummands] = reorder(
-    initialOrder,
-    normalizedFactors,
-    normalizedSummands,
-  );
-  const totalDynkinRank = orderedFactors.reduce(
-    (sum, factor) => sum + factor.rank,
-    0,
-  );
-  const factorCodes = orderedFactors.map((factor) => encodeFactor(factor));
-  const equalFactorBlocks = [];
-  for (let start = 0; start < orderedFactors.length; ) {
-    let stop = start + 1;
-    while (
-      stop < orderedFactors.length &&
-      factorCodes[stop] === factorCodes[start]
-    ) {
-      stop += 1;
-    }
-    const block = Array.from(
-      { length: stop - start },
-      (_, offset) => start + offset,
-    );
-    equalFactorBlocks.push(block.length === 1 ? [block] : permutations(block));
-    start = stop;
-  }
-
-  let bestSignature = null;
-  let bestOrder = Array.from(
-    { length: orderedFactors.length },
-    (_, index) => index,
-  );
-  const currentOrder = [];
-
-  function explore(blockIndex) {
-    if (blockIndex === equalFactorBlocks.length) {
-      const [, trialSummands] = reorder(
-        currentOrder,
-        orderedFactors,
-        orderedSummands,
+  let value = 0n;
+  for (const character of text) {
+    const charValue = BASE62_INDEX[character];
+    if (charValue === undefined) {
+      throw new RangeError(
+        `invalid Base62 character in rank bound ${JSON.stringify(character)}`,
       );
-      const signature = trialSummands
-        .map((row) => encodeSummand(row, totalDynkinRank))
-        .sort(compareLexicographic);
-      if (
-        bestSignature === null ||
-        compareStringTuples(signature, bestSignature) < 0
-      ) {
-        bestSignature = signature;
-        bestOrder = currentOrder.slice();
-      }
-      return;
     }
-    for (const choice of equalFactorBlocks[blockIndex]) {
-      currentOrder.push(...choice);
-      explore(blockIndex + 1);
-      currentOrder.length -= choice.length;
-    }
+    value = value * 62n + BigInt(charValue);
   }
-
-  explore(0);
-  [orderedFactors, orderedSummands] = reorder(
-    bestOrder,
-    orderedFactors,
-    orderedSummands,
-  );
-  orderedSummands.sort((left, right) =>
-    compareLexicographic(
-      encodeSummand(left, totalDynkinRank),
-      encodeSummand(right, totalDynkinRank),
-    ),
-  );
-  return [orderedFactors, orderedSummands];
+  return toSafeInteger(value, "rank bound");
 }
 
-export function encodeLabel(factors, summands) {
-  const [canonicalFactors, canonicalSummands] = canonicalize(factors, summands);
-  const ambientText = canonicalFactors
-    .map((factor) => encodeFactor(factor))
-    .join("");
-  if (canonicalSummands.length === 0) {
-    return ambientText;
-  }
-  const totalDynkinRank = canonicalFactors.reduce(
-    (sum, factor) => sum + factor.rank,
-    0,
-  );
-  const bundleText = canonicalSummands
-    .map((row) => encodeSummand(row, totalDynkinRank))
-    .join("");
-  return ambientText + SEP + bundleText;
+function encodeBundleText(summands, totalDynkinRank) {
+  return summands.map((row) => encodeSummand(row, totalDynkinRank)).join("");
 }
 
-function decodeLabelRaw(label) {
-  if (typeof label !== "string") {
-    throw new TypeError("label must be a string");
-  }
-  const separatorIndex = label.indexOf(SEP);
-  const ambientText =
-    separatorIndex < 0 ? label : label.slice(0, separatorIndex);
-  const bundleText = separatorIndex < 0 ? "" : label.slice(separatorIndex + 1);
-  if (!ambientText) {
-    throw new RangeError("ambient part must be non-empty");
-  }
-  if (separatorIndex >= 0 && !bundleText) {
-    throw new RangeError("separator requires a non-empty bundle");
-  }
-
-  const factors = [];
-  let position = 0;
-  while (position < ambientText.length) {
-    const [factor, nextPosition] = decodeFactor(ambientText, position);
-    factors.push(factor);
-    position = nextPosition;
-  }
-  if (separatorIndex < 0) {
-    return [factors, []];
-  }
-
-  const totalDynkinRank = factors.reduce((sum, factor) => sum + factor.rank, 0);
+function decodeBundleText(bundleText, factors, totalDynkinRank) {
   const summands = [];
-  position = 0;
+  let position = 0;
   while (position < bundleText.length) {
     const baseCharacter = bundleText[position];
     const baseValue = BASE62_INDEX[baseCharacter];
@@ -527,7 +415,6 @@ function decodeLabelRaw(label) {
     }
     let base;
     if (baseValue === 0) {
-      // Escaped base
       if (position + 2 > bundleText.length) {
         throw new RangeError("escaped base truncated");
       }
@@ -585,21 +472,268 @@ function decodeLabelRaw(label) {
     }
     summands.push(row);
   }
-  return [factors, summands];
+  return summands;
+}
+
+function reorder(order, factors, summands) {
+  return [
+    order.map((index) => factors[index]),
+    summands.map((row) => order.map((index) => row[index].slice())),
+  ];
+}
+
+function permutations(indices) {
+  if (indices.length <= 1) {
+    return [indices.slice()];
+  }
+  const result = [];
+  const working = indices.slice();
+  function visit(position) {
+    if (position === working.length) {
+      result.push(working.slice());
+      return;
+    }
+    for (let swapIndex = position; swapIndex < working.length; swapIndex += 1) {
+      [working[position], working[swapIndex]] = [
+        working[swapIndex],
+        working[position],
+      ];
+      visit(position + 1);
+      [working[position], working[swapIndex]] = [
+        working[swapIndex],
+        working[position],
+      ];
+    }
+  }
+  visit(0);
+  return result;
+}
+
+export function canonicalize(factors, summands, summandsF, k) {
+  const normalizedFactors = factors.map((factor) => coerceFactor(factor));
+  const normalizedSummands = normalizeSummands(summands, normalizedFactors);
+  const isDegeneracy = summandsF != null;
+  const normalizedSummandsF = isDegeneracy
+    ? normalizeSummands(summandsF, normalizedFactors)
+    : null;
+  if (isDegeneracy) {
+    toNonNegativeSafeInteger(k, "rank bound");
+  }
+  const initialOrder = normalizedFactors
+    .map((_, index) => index)
+    .sort((left, right) =>
+      compareLexicographic(
+        encodeFactor(normalizedFactors[left]),
+        encodeFactor(normalizedFactors[right]),
+      ),
+    );
+  let [orderedFactors, orderedSummands] = reorder(
+    initialOrder,
+    normalizedFactors,
+    normalizedSummands,
+  );
+  let orderedSummandsF = isDegeneracy
+    ? reorder(initialOrder, normalizedFactors, normalizedSummandsF)[1]
+    : null;
+  const totalDynkinRank = orderedFactors.reduce(
+    (sum, factor) => sum + factor.rank,
+    0,
+  );
+  const factorCodes = orderedFactors.map((factor) => encodeFactor(factor));
+  const equalFactorBlocks = [];
+  for (let start = 0; start < orderedFactors.length; ) {
+    let stop = start + 1;
+    while (
+      stop < orderedFactors.length &&
+      factorCodes[stop] === factorCodes[start]
+    ) {
+      stop += 1;
+    }
+    const block = Array.from(
+      { length: stop - start },
+      (_, offset) => start + offset,
+    );
+    equalFactorBlocks.push(block.length === 1 ? [block] : permutations(block));
+    start = stop;
+  }
+
+  let bestSignature = null;
+  let bestOrder = Array.from(
+    { length: orderedFactors.length },
+    (_, index) => index,
+  );
+  const currentOrder = [];
+
+  function sortedSig(summands) {
+    return summands
+      .map((row) => encodeSummand(row, totalDynkinRank))
+      .sort(compareLexicographic);
+  }
+
+  function explore(blockIndex) {
+    if (blockIndex === equalFactorBlocks.length) {
+      const [, trialE] = reorder(currentOrder, orderedFactors, orderedSummands);
+      const signature = [sortedSig(trialE)];
+      if (isDegeneracy) {
+        const [, trialF] = reorder(
+          currentOrder,
+          orderedFactors,
+          orderedSummandsF,
+        );
+        signature.push(sortedSig(trialF));
+      }
+      if (
+        bestSignature === null ||
+        comparePairSignatures(signature, bestSignature) < 0
+      ) {
+        bestSignature = signature;
+        bestOrder = currentOrder.slice();
+      }
+      return;
+    }
+    for (const choice of equalFactorBlocks[blockIndex]) {
+      currentOrder.push(...choice);
+      explore(blockIndex + 1);
+      currentOrder.length -= choice.length;
+    }
+  }
+
+  explore(0);
+  const sortBySummandCode = (left, right) =>
+    compareLexicographic(
+      encodeSummand(left, totalDynkinRank),
+      encodeSummand(right, totalDynkinRank),
+    );
+  if (isDegeneracy) {
+    orderedSummandsF = reorder(bestOrder, orderedFactors, orderedSummandsF)[1];
+  }
+  [orderedFactors, orderedSummands] = reorder(
+    bestOrder,
+    orderedFactors,
+    orderedSummands,
+  );
+  orderedSummands.sort(sortBySummandCode);
+  if (isDegeneracy) {
+    orderedSummandsF.sort(sortBySummandCode);
+    return [orderedFactors, orderedSummands, orderedSummandsF, k];
+  }
+  return [orderedFactors, orderedSummands];
+}
+
+export function encodeLabel(factors, summands, summandsF, k) {
+  const isDegeneracy = summandsF != null;
+  const result = canonicalize(factors, summands, summandsF, k);
+  const canonicalFactors = result[0];
+  const canonicalSummands = result[1];
+  const ambientText = canonicalFactors
+    .map((factor) => encodeFactor(factor))
+    .join("");
+  if (!isDegeneracy && canonicalSummands.length === 0) {
+    return ambientText;
+  }
+  const totalDynkinRank = canonicalFactors.reduce(
+    (sum, factor) => sum + factor.rank,
+    0,
+  );
+  if (isDegeneracy) {
+    const canonicalSummandsF = result[2];
+    return (
+      ambientText +
+      SEP +
+      encodeBundleText(canonicalSummands, totalDynkinRank) +
+      LOCUS_SEP +
+      encodeBundleText(canonicalSummandsF, totalDynkinRank) +
+      LOCUS_SEP +
+      encodeRankBound(k)
+    );
+  }
+  return (
+    ambientText + SEP + encodeBundleText(canonicalSummands, totalDynkinRank)
+  );
+}
+
+function decodeLabelRaw(label) {
+  if (typeof label !== "string") {
+    throw new TypeError("label must be a string");
+  }
+  const separatorIndex = label.indexOf(SEP);
+  const ambientText =
+    separatorIndex < 0 ? label : label.slice(0, separatorIndex);
+  const locusText = separatorIndex < 0 ? "" : label.slice(separatorIndex + 1);
+  if (!ambientText) {
+    throw new RangeError("ambient part must be non-empty");
+  }
+  if (separatorIndex >= 0 && !locusText) {
+    throw new RangeError("separator requires a non-empty locus");
+  }
+
+  const factors = [];
+  let position = 0;
+  while (position < ambientText.length) {
+    const [factor, nextPosition] = decodeFactor(ambientText, position);
+    factors.push(factor);
+    position = nextPosition;
+  }
+  if (separatorIndex < 0) {
+    return { type: "ambient", factors, summands: [] };
+  }
+
+  const totalDynkinRank = factors.reduce((sum, factor) => sum + factor.rank, 0);
+  const locusParts = locusText.split(LOCUS_SEP);
+
+  if (locusParts.length === 1) {
+    const summands = decodeBundleText(locusText, factors, totalDynkinRank);
+    return { type: "zero_locus", factors, summands };
+  }
+
+  if (locusParts.length !== 3) {
+    throw new RangeError(
+      `locus part must contain 0 or 2 dashes, got ${locusParts.length - 1}`,
+    );
+  }
+
+  const [bundleTextE, bundleTextF, rankBoundText] = locusParts;
+
+  if (!bundleTextE) {
+    throw new RangeError("bundle E must be non-empty");
+  }
+  if (!bundleTextF) {
+    throw new RangeError("bundle F must be non-empty");
+  }
+  if (!rankBoundText) {
+    throw new RangeError("rank bound must be non-empty");
+  }
+
+  const summandsE = decodeBundleText(bundleTextE, factors, totalDynkinRank);
+  const summandsF = decodeBundleText(bundleTextF, factors, totalDynkinRank);
+  const k = decodeRankBound(rankBoundText);
+
+  return { type: "degeneracy_locus", factors, summandsE, summandsF, k };
 }
 
 export function decodeLabel(label) {
-  const [factors, summands] = decodeLabelRaw(label);
-  if (encodeLabel(factors, summands) !== label) {
+  const result = decodeLabelRaw(label);
+  let reEncoded;
+  if (result.type === "degeneracy_locus") {
+    reEncoded = encodeLabel(
+      result.factors,
+      result.summandsE,
+      result.summandsF,
+      result.k,
+    );
+  } else {
+    reEncoded = encodeLabel(result.factors, result.summands);
+  }
+  if (reEncoded !== label) {
     throw new RangeError("label is not in canonical form");
   }
-  return [factors, summands];
+  return result;
 }
 
 export function isCanonical(label) {
   try {
-    const [factors, summands] = decodeLabelRaw(label);
-    return encodeLabel(factors, summands) === label;
+    decodeLabel(label);
+    return true;
   } catch {
     return false;
   }

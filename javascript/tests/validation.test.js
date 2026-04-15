@@ -47,7 +47,7 @@ test("invalid Dynkin type rank pairs are rejected on encode", () => {
 
 for (const label of ["H0.24", "iF", "u11", "0A1H000", "0B1H000"]) {
   test(`non-A and escape example decodes: ${label}`, () => {
-    const [factors] = decodeLabel(label);
+    const { factors } = decodeLabel(label);
     assert.ok(factors.length > 0);
   });
 }

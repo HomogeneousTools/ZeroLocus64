@@ -38,10 +38,24 @@ export function normalizeSummands(summands) {
   return summands.map((row) => row.map((weights) => weights.slice()));
 }
 
-export function normalizeDecoded([factors, summands]) {
+export function normalizeDecoded(result) {
+  if (Array.isArray(result)) {
+    return {
+      factors: normalizeFactors(result[0]),
+      summands: normalizeSummands(result[1]),
+    };
+  }
+  if (result.type === "degeneracy_locus") {
+    return {
+      factors: normalizeFactors(result.factors),
+      summandsE: normalizeSummands(result.summandsE),
+      summandsF: normalizeSummands(result.summandsF),
+      k: result.k,
+    };
+  }
   return {
-    factors: normalizeFactors(factors),
-    summands: normalizeSummands(summands),
+    factors: normalizeFactors(result.factors),
+    summands: normalizeSummands(result.summands),
   };
 }
 

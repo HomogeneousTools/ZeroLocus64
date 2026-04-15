@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   BASE62,
   ESCAPE,
+  LOCUS_SEP,
   SEP,
   STANDARD_NAME,
   Factor,
@@ -130,7 +131,7 @@ test("curated case names are unique", () => {
 for (const [label, message] of [
   ["", "ambient part must be non-empty"],
   [".21", "ambient part must be non-empty"],
-  ["30.", "separator requires a non-empty bundle"],
+  ["30.", "separator requires a non-empty locus"],
   ["0", "factor escape truncated"],
   ["0Z10", "unknown Dynkin type"],
   ["0G170_", "invalid Dynkin type/rank pair"],
@@ -256,4 +257,128 @@ test("isCanonical accepts escaped base labels", () => {
   assert.equal(isCanonical("1.0210z"), true);
   assert.equal(isCanonical("1.021d1c"), true);
   assert.equal(isCanonical("1.0210z21"), true);
+});
+
+// --- Degeneracy locus tests ---
+
+test("LOCUS_SEP constant is dash", () => {
+  assert.equal(LOCUS_SEP, "-");
+});
+
+const DEGENERACY_EXAMPLES = [
+  ["P1 id", [new Factor("A", 1, 1)], [[[1]]], [[[1]]], 0, "1.21-21-0"],
+  [
+    "P1xP1",
+    [new Factor("A", 1, 1), new Factor("A", 1, 1)],
+    [[[1], [0]]],
+    [[[0], [1]]],
+    0,
+    "11.21-22-0",
+  ],
+  [
+    "P3 two-to-one",
+    [new Factor("A", 3, 1)],
+    [[[1, 0, 0]], [[1, 0, 0]]],
+    [[[2, 0, 0]]],
+    1,
+    "30.2424-3I-1",
+  ],
+];
+
+for (const [
+  name,
+  factors,
+  summandsE,
+  summandsF,
+  k,
+  label,
+] of DEGENERACY_EXAMPLES) {
+  test(`degeneracy spec: ${name}`, () => {
+    assert.equal(encodeLabel(factors, summandsE, summandsF, k), label);
+    const result = decodeLabel(label);
+    assert.equal(result.type, "degeneracy_locus");
+    assert.equal(result.k, k);
+    assert.equal(result.summandsE.length, summandsE.length);
+    assert.equal(result.summandsF.length, summandsF.length);
+  });
+}
+
+test("degeneracy decode returns tagged result", () => {
+  const result = decodeLabel("1.21-21-0");
+  assert.equal(result.type, "degeneracy_locus");
+  assert.equal(result.factors.length, 1);
+  assert.deepEqual(result.summandsE, [[[1]]]);
+  assert.deepEqual(result.summandsF, [[[1]]]);
+  assert.equal(result.k, 0);
+});
+
+test("degeneracy round-trip preserves data", () => {
+  const factors = [new Factor("A", 2, 1)];
+  const summandsE = [[[1, 0]]];
+  const summandsF = [[[0, 1]]];
+  const k = 0;
+  const label = encodeLabel(factors, summandsE, summandsF, k);
+  const result = decodeLabel(label);
+  assert.equal(result.type, "degeneracy_locus");
+  assert.equal(
+    encodeLabel(result.factors, result.summandsE, result.summandsF, result.k),
+    label,
+  );
+});
+
+test("degeneracy canonicalize minimizes E then F", () => {
+  const factors = [new Factor("A", 1, 1), new Factor("A", 1, 1)];
+  // Same data, both orderings yield same label
+  const label1 = encodeLabel(factors, [[[1], [0]]], [[[0], [1]]], 0);
+  const label2 = encodeLabel(factors, [[[0], [1]]], [[[1], [0]]], 0);
+  assert.equal(label1, label2);
+  assert.equal(label1, "11.21-22-0");
+});
+
+test("degeneracy rank bound k > 0", () => {
+  const factors = [new Factor("A", 3, 1)];
+  const label = encodeLabel(factors, [[[1, 0, 0]]], [[[1, 0, 0]]], 5);
+  assert.ok(label.endsWith("-5"));
+  const result = decodeLabel(label);
+  assert.equal(result.k, 5);
+});
+
+test("degeneracy rank bound k=62 uses two characters", () => {
+  const factors = [new Factor("A", 1, 1)];
+  const label = encodeLabel(factors, [[[1]]], [[[1]]], 62);
+  assert.ok(label.endsWith("-10"));
+  const result = decodeLabel(label);
+  assert.equal(result.k, 62);
+});
+
+test("isCanonical works for degeneracy labels", () => {
+  assert.equal(isCanonical("1.21-21-0"), true);
+  assert.equal(isCanonical("11.21-22-0"), true);
+  assert.equal(isCanonical("30.2424-3I-1"), true);
+});
+
+for (const [label, message] of [
+  ["1.21-21-", "rank bound must be non-empty"],
+  ["1.-21-0", "bundle E must be non-empty"],
+  ["1.21--0", "bundle F must be non-empty"],
+  ["1.21-21-21-0", "locus part must contain 0 or 2 dashes"],
+]) {
+  test(`invalid degeneracy: ${label}`, () => {
+    assert.throws(
+      () => decodeLabel(label),
+      (error) => error instanceof Error && error.message.includes(message),
+    );
+  });
+}
+
+test("zero-locus decode returns tagged result", () => {
+  const result = decodeLabel("1.21");
+  assert.equal(result.type, "zero_locus");
+  assert.deepEqual(result.summands, [[[1]]]);
+});
+
+test("ambient-only decode returns tagged result", () => {
+  const result = decodeLabel("1");
+  assert.equal(result.type, "ambient");
+  assert.deepEqual(result.summands, []);
 });

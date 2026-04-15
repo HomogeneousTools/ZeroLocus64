@@ -306,17 +306,27 @@ export function describeSummands(factors, summands) {
 }
 
 export function decodeDetailedLabel(label) {
-  const [factors, summands] = decodeLabel(label);
+  const result = decodeLabel(label);
+  const { factors } = result;
+  const summands =
+    result.type === "degeneracy_locus" ? result.summandsE : result.summands;
   const ambient = describeAmbient(factors);
-  return {
+  const detail = {
     label,
-    canonicalLabel: encodeLabel(factors, summands),
+    canonicalLabel: label,
     factors,
     summands,
     ambient,
     factorDetails: ambient.factors,
     summandDetails: describeSummands(factors, summands),
   };
+  if (result.type === "degeneracy_locus") {
+    detail.summandsE = result.summandsE;
+    detail.summandsF = result.summandsF;
+    detail.k = result.k;
+    detail.summandDetailsF = describeSummands(factors, result.summandsF);
+  }
+  return detail;
 }
 
 function dynkinViewBox(entry, weights) {
