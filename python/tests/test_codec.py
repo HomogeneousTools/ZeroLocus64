@@ -172,3 +172,41 @@ def test_is_canonical_on_invalid_labels() -> None:
     assert is_canonical("") is False
     assert is_canonical(".21") is False
     assert is_canonical("0") is False
+
+
+def test_escaped_base_round_trip_coeff_61() -> None:
+    factors = [Factor("A", 1, 1)]
+    summands = [[[61]]]
+    label = encode_label(factors, summands)
+    assert label == "1.0210z"
+    assert decode_label(label) == canonicalize(factors, summands)
+
+
+def test_escaped_base_round_trip_coeff_100() -> None:
+    factors = [Factor("A", 1, 1)]
+    summands = [[[100]]]
+    label = encode_label(factors, summands)
+    assert label == "1.021d1c"
+    assert decode_label(label) == canonicalize(factors, summands)
+
+
+def test_escaped_base_mixed_standard_and_escaped() -> None:
+    factors = [Factor("A", 1, 1)]
+    summands = [[[61]], [[1]]]
+    label = encode_label(factors, summands)
+    assert label == "1.0210z21"
+    assert decode_label(label) == canonicalize(factors, summands)
+
+
+def test_escaped_base_large_coefficient() -> None:
+    factors = [Factor("A", 1, 1)]
+    summands = [[[1000]]]
+    label = encode_label(factors, summands)
+    decoded = decode_label(label)
+    assert decoded == canonicalize(factors, summands)
+
+
+def test_is_canonical_on_escaped_base_labels() -> None:
+    assert is_canonical("1.0210z") is True
+    assert is_canonical("1.021d1c") is True
+    assert is_canonical("1.0210z21") is True
