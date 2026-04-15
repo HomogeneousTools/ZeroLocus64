@@ -1,6 +1,8 @@
 # ZeroLocus62
 
 [![Tests](https://github.com/HomogeneousTools/ZeroLocus62/actions/workflows/CI.yml/badge.svg)](https://github.com/HomogeneousTools/ZeroLocus62/actions/workflows/CI.yml)
+[![Docs](https://img.shields.io/badge/docs-zl62.homogeneous.tools-blue)](https://zl62.homogeneous.tools)
+[![Release](https://img.shields.io/github/v/release/HomogeneousTools/ZeroLocus62?color=green)](https://github.com/HomogeneousTools/ZeroLocus62/releases)
 
 ZeroLocus62 is a compact, canonical encoding for zero loci of completely reducible vector bundles on partial flag varieties. This repository contains the v1.1 format specification together with independent Python, Julia, and JavaScript reference implementations, plus a small browser-based decoder website.
 
