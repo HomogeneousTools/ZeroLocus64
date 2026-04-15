@@ -2,9 +2,9 @@
 
 [![Tests](https://github.com/HomogeneousTools/ZeroLocus64/actions/workflows/CI.yml/badge.svg)](https://github.com/HomogeneousTools/ZeroLocus64/actions/workflows/CI.yml)
 
-ZeroLocus64 is a compact, canonical encoding for zero loci of completely reducible vector bundles on partial flag varieties. This repository contains the v1 format specification together with independent Python, Julia, and JavaScript reference implementations, plus a small browser-based decoder website.
+ZeroLocus64 is a compact, canonical encoding for zero loci of completely reducible vector bundles on partial flag varieties. This repository contains the v1.1 format specification together with independent Python, Julia, and JavaScript reference implementations, plus a small browser-based decoder website.
 
-The canonical format definition is [specification.md](specification.md). Treat that document as the source of truth for the v1 wire format, canonicalization rules, and worked examples.
+The canonical format definition is [specification.md](specification.md). Treat that document as the source of truth for the v1.1 wire format, canonicalization rules, and worked examples.
 
 ## Repository layout
 
@@ -14,6 +14,23 @@ The canonical format definition is [specification.md](specification.md). Treat t
 - [julia](julia): Julia module and Julia test suite.
 - [javascript](javascript): JavaScript package, Node test suite, and website build or preview scripts.
 - [website](website): static two-page site for browsing the specification and decoding labels.
+
+## Reference API
+
+The reference implementations of the v1.1 format are:
+
+- [python/src/zerolocus64/](python/src/zerolocus64/)
+- [julia/src/](julia/src/)
+- [javascript/src/](javascript/src/)
+
+All three implementations expose the same conceptual operations:
+
+- `canonicalize(factors, summands)`
+- `encode_label(factors, summands)`
+- `decode_label(label)`
+- `is_canonical(label)`
+
+All three also expose a `Factor` type representing one irreducible Dynkin factor. Tracked regression examples live in [examples.json](examples.json).
 
 ## Python
 
