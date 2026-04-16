@@ -1,13 +1,14 @@
-"""ZeroLocus62 v1.1 canonical label codec for partial-flag zero loci.
+"""ZeroLocus62 v2 canonical label codec for partial-flag zero loci and degeneracy loci.
 
-This module is the reference Python implementation of the ZeroLocus62 v1.1
+This module is the reference Python implementation of the ZeroLocus62 v2
 specification.
 
 ZeroLocus62 uses the 62-character lexicographic alphabet
 ``0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz``
 for encoding labels. Integer-to-string conversion is done via big-integer
-arithmetic (repeated division by 62). ``0`` is the escape character, and
-``.`` separates the ambient part from the optional bundle part.
+arithmetic (repeated division by 62). ``0`` is the escape character, ``.``
+separates the ambient part from the optional locus part, and ``-`` separates
+the two bundle parts of a degeneracy locus.
 """
 
 from __future__ import annotations

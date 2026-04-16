@@ -1,9 +1,9 @@
 """
     ZeroLocus62
 
-Reference Julia implementation of the ZeroLocus62 v1.1 label codec.
+Reference Julia implementation of the ZeroLocus62 v2 label codec.
 
-This module implements the ZeroLocus62 v1.1 specification using the Base62
+This module implements the ZeroLocus62 v2 specification using the Base62
 alphabet `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`.
 """
 module ZeroLocus62

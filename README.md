@@ -4,9 +4,9 @@
 [![Docs](https://img.shields.io/badge/docs-zl62.homogeneous.tools-blue)](https://zl62.homogeneous.tools)
 [![Release](https://img.shields.io/github/v/release/HomogeneousTools/ZeroLocus62?color=green)](https://github.com/HomogeneousTools/ZeroLocus62/releases)
 
-ZeroLocus62 is a compact, canonical encoding for zero loci of completely reducible vector bundles on partial flag varieties. This repository contains the v1.1 format specification together with independent Python, Julia, and JavaScript reference implementations, plus a small browser-based decoder website.
+ZeroLocus62 is a compact, canonical encoding for zero loci and degeneracy loci of completely reducible vector bundles on partial flag varieties. This repository contains the v2 format specification together with independent Python, Julia, and JavaScript reference implementations, plus a small browser-based decoder website.
 
-The canonical format definition is [specification.md](specification.md). Treat that document as the source of truth for the v1.1 wire format, canonicalization rules, and worked examples.
+The canonical format definition is [specification.md](specification.md). Treat that document as the source of truth for the v2 wire format, canonicalization rules, and worked examples.
 
 ## Repository layout
 
@@ -19,7 +19,7 @@ The canonical format definition is [specification.md](specification.md). Treat t
 
 ## Reference API
 
-The reference implementations of the v1.1 format are:
+The reference implementations of the v2 format are:
 
 - [python/src/zerolocus62/](python/src/zerolocus62/)
 - [julia/src/](julia/src/)
@@ -120,3 +120,9 @@ npm --prefix javascript run site
 Then open `http://localhost:4173` for the decoder and `http://localhost:4173/specification` for the rendered specification.
 
 Deployment to GitHub Pages is handled by [.github/workflows/pages.yml](.github/workflows/pages.yml).
+
+## Version history
+
+- **v1** — Initial encoding for zero loci of completely reducible vector bundles on partial flag varieties.
+- **v1.1** — Switched the character alphabet to Base62 (`0–9A–Za–z`), enabling lexicographic ordering by encoded string.
+- **v2** — Extended the format to encode degeneracy loci: a label may now encode two bundles and a rank bound in addition to a zero locus or ambient-only label.

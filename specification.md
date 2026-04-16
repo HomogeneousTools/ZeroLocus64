@@ -466,3 +466,9 @@ For `P^1 x P^1`, the bundle `O(1,0) \oplus O(0,1)` has row encodings `22` and `2
 - $F = \mathcal{O}(2)$: one summand with coefficients $(2, 0, 0)$. Base $B = 3$, packed value $v = 2 \cdot 9 + 0 \cdot 3 + 0 = 18$. Width: $62^1 \ge 3^3 = 27$, so $k = 1$. Value character: encode $18$ in 1 character = `I`. Summand encodes as `3I`.
 - $k = 1$ encodes as `1`.
 - Label: `30.2424-3I-1`.
+
+## 12. Version history
+
+- **v1** — Initial encoding for zero loci of completely reducible vector bundles on partial flag varieties.
+- **v1.1** — Switched the character alphabet to Base62 (`0–9A–Za–z`), giving a fixed 62-character encoding with lexicographic ordering by encoded string. Because `-` is not a Base62 character, v1.1 labels are reliably rejected by hypothetical v1 decoders and vice versa.
+- **v2** — Extended the format to encode degeneracy loci. A label may now specify two bundles $E$ and $F$ and a non-negative integer rank bound $k$, using `-` as an intra-locus separator (`<ambient>.<bundle_E>-<bundle_F>-<k>`). Labels containing `-` are reliably rejected by v1.1 decoders. The ambient-only and zero-locus forms are unchanged from v1.1.
