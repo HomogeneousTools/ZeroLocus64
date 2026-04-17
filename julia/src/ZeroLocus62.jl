@@ -337,6 +337,12 @@ function canonicalize(
     if is_degeneracy
         _, summands_f = reorder(initial_order, factors, summands_f)
     end
+    # Short-circuit: with empty summands the initial sort IS canonical — all
+    # permutations of equal-factor blocks give the same (empty) signature, so
+    # there is no need to enumerate them combinatorially.
+    if !is_degeneracy && isempty(summands)
+        return factors, summands
+    end
     total_dynkin_rank = sum(factor.rank for factor in factors)
     factor_codes = encode_factor.(factors)
     equal_factor_blocks = Vector{Vector{Int}}()
