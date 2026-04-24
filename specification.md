@@ -1,8 +1,8 @@
-# ZeroLocus62 format specification v2.1
+# ZeroLocus62 format specification v2.2
 
 ## Status
 
-This document defines Version 2.1 of the ZeroLocus62 encoding format for zero loci and degeneracy loci of completely reducible vector bundles on partial flag varieties. It is intended to be read as an RFC-like specification for the wire format and canonicalization rules.
+This document defines Version 2.2 of the ZeroLocus62 encoding format for zero loci and degeneracy loci of completely reducible vector bundles on partial flag varieties. It is intended to be read as an RFC-like specification for the wire format and canonicalization rules.
 
 ## 1. Conventions
 
@@ -132,45 +132,59 @@ Canonicalization is part of the format definition, not an optional implementatio
 
 ### 6.1 Definition
 
-A label is **canonical** if and only if it uniquely minimizes the following ordered criteria among all labels representing the same mathematical object:
+A label is **canonical** if and only if it is produced by the following ordered criteria:
 
 1. The ambient factors are sorted by their encoded factor strings in ascending code-unit order.
-2. Among all permutations of factors within each maximal equal-factor block (a maximal run of consecutive factors with identical encoded strings), the chosen permutation minimizes the canonicalization key derived from the encoded locus data (see below).
-3. Each group of summand rows is sorted by its encoded strings in ascending code-unit order.
+2. The remaining ambiguity among equal encoded ambient factors is resolved by canonically labeling the colored edge-labeled bipartite graph built from the ambient factors and bundle summands as described in §6.2.
+3. After the ambient factor order is fixed, each group of summand rows is sorted by its encoded strings in ascending code-unit order.
 
-**Zero locus canonicalization key.** The key is the lexicographically sorted tuple of encoded summand row strings for the single bundle.
+The v2.2 canonicalization rule is intentionally not the v2.1 lexicographic minimum over all equal-factor permutations. It is a different canonical labeling rule, so some labels that were canonical in v2.1 are not canonical in v2.2.
 
-**Degeneracy locus canonicalization key.** The key is the pair $(T_E, T_F)$ where $T_E$ is the sorted tuple of encoded row strings for bundle $E$ and $T_F$ is the sorted tuple for bundle $F$. Pairs are compared lexicographically: $T_E$ first, then $T_F$ as tiebreaker. The rank bound $k$ is invariant under factor permutation and does not affect the key.
+### 6.2 Canonical graph
 
-**Uniqueness.** Encoding each factor and each summand row is deterministic once the factor order is fixed. The lexicographic minimum of a finite set of tuples is unique. Sorting the summand rows by their deterministic encodings produces a unique sequence. Since the canonical label is fully determined by the sorted factor strings, the minimal canonicalization key, and the sorted summand rows, the canonical label for a given mathematical object is unique. (The internal permutation of indistinguishable factors within an equal-factor block need not be unique; only the resulting label is.)
+After the initial ambient-factor sort of §6.1(1), build a finite bipartite graph as follows.
 
-### 6.2 Algorithm
+- Create one **factor vertex** for each ambient factor. Its color is the string `F:<ambient-code>`, where `<ambient-code>` is that factor's encoded ambient substring.
+- Create one **row vertex** for each summand row of the locus data. In the zero-locus / bundle case, every such vertex has color `R:E`. In the degeneracy-locus case, the row vertices coming from $E$ have color `R:E` and those coming from $F$ have color `R:F`.
+- For every factor vertex $x_i$ and row vertex $r_j$, add one edge labeled by the highest-weight vector contributed by row $r_j$ on factor $x_i$.
 
-To compute the canonical form:
+No same-side edges are present.
 
-1. sort the ambient factors by their encoded ambient factor strings;
-2. partition the sorted ambient factors into maximal equal-factor blocks;
-3. for each combination of permutations of the equal-factor blocks, reorder every bundle summand accordingly, encode each row, sort the encoded strings, and record the canonicalization key (single sorted tuple for zero loci; pair of sorted tuples for degeneracy loci);
-4. choose the combination whose key is lexicographically minimal;
-5. apply that combination to fix the canonical ambient order;
-6. sort each group of summand rows by their encoded strings (both $E$ and $F$ summand rows independently for degeneracy loci).
+### 6.3 Canonical graph labeling algorithm
 
-There is no exhaustive search across distinct ambient factors. Only equal-factor blocks are permuted. Implementations MAY use any algorithm that produces the same result as this procedure.
+The canonical ambient order is the factor-vertex order induced by the lexicographically minimal certificate obtained from the following ordered-partition refinement procedure.
 
-### 6.3 Complexity
+1. Start from the ordered partition whose cells are:
+   - one cell for each factor-vertex color, in ascending lexicographic order of those colors;
+   - one cell for each row-vertex color, in ascending lexicographic order of those colors.
+2. Refine this partition repeatedly until stable. For one vertex $v$, its refinement signature is:
+   - its current color; and
+   - for each current cell $C$, the sorted multiset of edge labels from $v$ to the vertices of $C$, written in the current cell order.
+   Vertices in the same cell whose signatures differ are split into new cells ordered by ascending signature.
+3. If the refined partition is discrete, read off the ordered list of singleton vertices and compute its certificate:
+   - first the sequence of vertex colors in that order;
+   - then the sequence of all upper-triangular edge labels in that order.
+   Both sequences are compared lexicographically in ascending code-unit order.
+4. If the refined partition is not discrete, choose a target cell by:
+   - minimal cell size among non-singleton cells;
+   - on ties, prefer a factor-vertex cell over a row-vertex cell;
+   - on remaining ties, choose the earliest such cell in the ordered partition.
+5. Individualize each vertex of that target cell in turn: replace the cell by a singleton containing that vertex followed by the remainder of the cell, refine again, and recurse.
+6. Among all discrete leaves reached in this search tree, choose the lexicographically minimal certificate.
+7. The canonical ambient order is the order in which the factor vertices appear in the corresponding ordered singleton list.
+8. Finally, sort the summand rows by their encoded strings in that canonical ambient order.
 
-The reference brute-force enumeration considers $\prod_i |B_i|!$ permutation combinations, where $B_i$ ranges over the equal-factor blocks. For a single block of $k$ identical factors, the worst-case cost is $k!$.
+Any implementation is valid if and only if it produces exactly the same canonical ambient order as this graph-certificate procedure.
 
-This factorial blow-up is real when a large equal-factor block contains many distinguishable positions. Implementations therefore SHOULD exploit exact optimizations before or instead of naive enumeration. Examples include:
+### 6.4 Complexity
 
-- trivial short-circuits (ambient-only labels, bundles with no equal-factor blocks, empty zero-locus summand lists);
-- collapsing positions inside one equal-factor block that have identical coefficient profiles across all rows of $E$ and $F$;
-- lazy permutation generation rather than eager materialization;
-- lexicographic prefix pruning or other refinement algorithms that discard candidates once their partial key is already worse than the best candidate seen so far.
+Version 2.2 eliminates v2.1's normative exhaustive search over the Cartesian product of equal-factor permutations. The reference algorithm instead uses ordered-partition refinement with individualization/backtracking on the canonical graph of §6.2.
 
-Any optimization is permitted only if it produces exactly the same canonical label as the brute-force definition above.
+This change removes the explicit $\prod_i |B_i|!$ permutation enumeration from the format definition. The reference algorithm is still an exact graph-canonization procedure, so highly symmetric inputs may require substantial backtracking and are not known to admit a polynomial-time solution in full generality. In practice, refinement usually splits most cells quickly.
 
-### 6.4 Ordering convention
+External tools such as `nauty`, `Traces`, or `bliss` are **not required** by this specification. A fully self-contained implementation is conforming. Implementations MAY nevertheless delegate the graph canonization step to an external exact canonization engine if they produce the same certificates and therefore the same canonical factor order.
+
+### 6.5 Ordering convention
 
 All lexicographic comparisons in this specification — including ambient factor sorting, summand-tuple comparison, and summand-row sorting — use ascending code-unit order of the encoded strings.
 
@@ -178,7 +192,7 @@ Code-unit order means: compare two strings position by position from left to rig
 
 Because all 62 characters of the ZeroLocus62 alphabet are ASCII, the code-unit value of each character is simply its ASCII byte value. The alphabet order — numerals `0`–`9` (0x30–0x39, values 0–9), uppercase `A`–`Z` (0x41–0x5A, values 10–35), lowercase `a`–`z` (0x61–0x7A, values 36–61) — agrees exactly with ASCII byte order. Consequently, lexicographic comparison of any two encoded strings by Base62 value gives the same result as standard byte-wise string comparison.
 
-### 6.5 Canonical validation
+### 6.6 Canonical validation
 
 A decoded label MUST be in canonical form.
 
@@ -467,7 +481,7 @@ An implementation MUST reject at least the following malformed conditions:
 - a locus part containing any number of `-` characters other than 0 or 2;
 - a degeneracy locus with an empty `E`, `F`, or `k` segment;
 - a rank bound `k` with leading zeros (a multi-character `k` whose first character has Base62 value 0);
-- a label that is not in canonical form: after decoding a label into its structured representation, re-encoding MUST reproduce the original label byte for byte. This check implicitly rejects non-minimal encodings such as standard factors encoded in escape form, overlong rank fields, non-sorted factor or summand order, and non-minimal permutation choices.
+- a label that is not in canonical form: after decoding a label into its structured representation, re-encoding MUST reproduce the original label byte for byte. This check implicitly rejects non-minimal encodings such as standard factors encoded in escape form, overlong rank fields, non-sorted summand order, and ambient-factor orders that do not match the canonical graph certificate of §6.
 
 ## 11. Worked examples
 
@@ -506,7 +520,18 @@ For `P^1`, the bundle `O \oplus O(1)` has row encodings `20` and `21`, so the lo
 
 For `P^1 x P^1`, the bundle `O(1,0) \oplus O(0,1)` has row encodings `22` and `21`, which sort to `21`, `22`, giving the full label `11.2122`.
 
-### 11.2 Degeneracy locus examples
+### 11.2 Examples where v2.2 differs from v2.1
+
+Because v2.2 changes only the canonicalization rule and not the wire syntax, the easiest way to see the difference is to compare labels for the same bundle.
+
+| Object            | Bundle                                                    | v2.1 label    | v2.2 label    |
+| ----------------- | --------------------------------------------------------- | ------------- | ------------- |
+| $(\mathbb{P}^1)^3$ | $\mathcal{O}(0,0,1) \oplus \mathcal{O}(0,2,0)$            | `111.2136`    | `111.2232`    |
+| $(\mathbb{P}^1)^3$ | $\mathcal{O}(-1,-1,-1) \oplus \mathcal{O}(-1,-1,0)$      | `111.123127`  | `111.126127`  |
+
+Under v2.1 these labels were obtained by minimizing the sorted tuple of encoded summand rows over all equal-factor permutations. Under v2.2 they are obtained from the canonical graph certificate of §6.3, and the resulting canonical ambient order can differ.
+
+### 11.3 Degeneracy locus examples
 
 | Object                             | $E$                                    | $F$                | $k$ | Label          |
 | ---------------------------------- | -------------------------------------- | ------------------ | --- | -------------- |
@@ -528,3 +553,4 @@ For `P^1 x P^1`, the bundle `O(1,0) \oplus O(0,1)` has row encodings `22` and `2
 - **v1.1** — Switched the character alphabet to Base62 (`0–9A–Za–z`), giving a fixed 62-character encoding with lexicographic ordering by encoded string. Because `-` is not a Base62 character, v1.1 labels are reliably rejected by hypothetical v1 decoders and vice versa.
 - **v2.0** — Extended the format to encode degeneracy loci. A label may now specify two bundles $E$ and $F$ and a non-negative integer rank bound $k$, using `-` as an intra-locus separator (`<ambient>.<bundle_E>-<bundle_F>-<k>`). Labels containing `-` are reliably rejected by v1.1 decoders. The ambient-only and zero-locus forms are unchanged from v1.1.
 - **v2.1** — Added signed bundle coefficients. A summand row with at least one negative coefficient is encoded with the signed-row marker `1` followed by the usual base descriptor and packed ZigZag-transformed digits. Because v2.0 decoders rejected `1` as a bundle base character, signed-row labels are reliably rejected by v2.0 decoders.
+- **v2.2** — Replaced the v2.1 equal-factor permutation minimum by the graph-certificate canonicalization rule of §6. This change requires no new syntax and no external canonization tool, but it does change some canonical labels relative to v2.1.
