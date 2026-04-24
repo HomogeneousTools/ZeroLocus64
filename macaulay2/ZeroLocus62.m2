@@ -2,7 +2,7 @@
 
 newPackage(
     "ZeroLocus62",
-    Version => "2.1.0",
+    Version => "2.2.0",
     Date => "April 24, 2026",
     Authors => {
         {Name => "Pieter Belmans", Email => "pieterbelmans@gmail.com"}},
@@ -262,7 +262,7 @@ decodeFactor = (text, position) -> (
     )
 
 -------------------------------------------------------------------------
--- Bundle-row packing, including signed rows in v2.1.
+-- Bundle-row packing, including signed rows in v2.2.
 -------------------------------------------------------------------------
 
 normalizeSummands = (summands, ambientFactors) -> (
@@ -494,8 +494,198 @@ sortRows = (rows, totalDynkinRank) -> (
         pair -> pair#1)
     )
 
-sortedSignature = (rows, totalDynkinRank) ->
-    sort apply(rows, row -> encodeSummand(row, totalDynkinRank))
+-------------------------------------------------------------------------
+-- Graph-style canonicalization (v2.2).
+-------------------------------------------------------------------------
+
+serializeWeights = weights -> (
+    inner := "";
+
+    for i from 0 to #weights - 1 do (
+        if i > 0 then inner = inner | ",";
+        inner = inner | toString(weights#i);
+        );
+
+    "[" | inner | "]"
+    )
+
+joinStrings = (sep, lst) -> (
+    if #lst == 0 then return "";
+
+    result := lst#0;
+    for i from 1 to #lst - 1 do result = result | sep | lst#i;
+
+    result
+    )
+
+canonicalFactorOrder = (ambientFactors, summands, summandsF) -> (
+    if #ambientFactors < 2 then return apply(#ambientFactors, index -> index);
+
+    rowEntries := {};
+    for i from 0 to #summands - 1 do
+        rowEntries = append(rowEntries, ("E", i, summands#i));
+    if summandsF =!= null then
+        for i from 0 to #summandsF - 1 do
+            rowEntries = append(rowEntries, ("F", i, summandsF#i));
+
+    if #rowEntries == 0 then return apply(#ambientFactors, index -> index);
+
+    rowOffset := #ambientFactors;
+    vertexColors := new MutableHashTable;
+    edgeLabels := new MutableHashTable;
+
+    for index from 0 to #ambientFactors - 1 do
+        vertexColors#index = "F:" | encodeFactor(ambientFactors#index);
+
+    for offset from 0 to #rowEntries - 1 do (
+        entry := rowEntries#offset;
+        bundleTag := entry#0;
+        row := entry#2;
+        vertex := rowOffset + offset;
+        vertexColors#vertex = "R:" | bundleTag;
+
+        for factorIndex from 0 to #row - 1 do (
+            label := serializeWeights(row#factorIndex);
+            edgeLabels#(factorIndex, vertex) = label;
+            edgeLabels#(vertex, factorIndex) = label;
+            );
+        );
+
+    cellKey := (vertex, cell) -> (
+        labels := apply(cell, other ->
+            if edgeLabels#?(vertex, other) then edgeLabels#(vertex, other) else "~");
+        joinStrings(";", sort labels)
+        );
+
+    refine := partition -> (
+        current := partition;
+        changed := true;
+
+        while changed do (
+            changed = false;
+            updated := {};
+
+            for cell in current do (
+                buckets := new MutableHashTable;
+
+                for vertex in cell do (
+                    sig := joinStrings("|",
+                        join({vertexColors#vertex},
+                            apply(current, otherCell -> cellKey(vertex, otherCell))));
+                    if not buckets#?sig then buckets#sig = {};
+                    buckets#sig = append(buckets#sig, vertex);
+                    );
+
+                if #(keys buckets) == 1 then
+                    updated = append(updated, cell)
+                else (
+                    changed = true;
+                    for s in sort keys buckets do
+                        updated = append(updated, buckets#s);
+                    );
+                );
+
+            current = updated;
+            );
+
+        current
+        );
+
+    targetCell := partition -> (
+        bestIndex := null;
+        bestKey := null;
+
+        for index from 0 to #partition - 1 do (
+            cell := partition#index;
+            if #cell <= 1 then continue;
+            isRowCell := if cell#0 < rowOffset then 0 else 1;
+            key := (#cell, isRowCell, index);
+
+            if bestKey === null or key < bestKey then (
+                bestKey = key;
+                bestIndex = index;
+                );
+            );
+
+        bestIndex
+        );
+
+    individualize := (partition, cellIndex, chosen) -> (
+        cell := partition#cellIndex;
+        remainder := select(cell, v -> v != chosen);
+        result := {};
+
+        for i from 0 to cellIndex - 1 do result = append(result, partition#i);
+        result = append(result, {chosen});
+        if #remainder > 0 then result = append(result, remainder);
+        for i from cellIndex + 1 to #partition - 1 do result = append(result, partition#i);
+
+        result
+        );
+
+    certFn := partition -> (
+        ordered := apply(partition, cell -> cell#0);
+        colors := joinStrings("|", apply(ordered, v -> vertexColors#v));
+        edges := {};
+
+        for li from 0 to #ordered - 1 do
+            for ri from li + 1 to #ordered - 1 do (
+                key := (ordered#li, ordered#ri);
+                edges = append(edges,
+                    if edgeLabels#?key then edgeLabels#key else "~");
+                );
+
+        colors | "||" | joinStrings("|", edges)
+        );
+
+    initialPartition := {};
+    factorGroupsHT := new MutableHashTable;
+
+    for index from 0 to #ambientFactors - 1 do (
+        color := vertexColors#index;
+        if not factorGroupsHT#?color then factorGroupsHT#color = {};
+        factorGroupsHT#color = append(factorGroupsHT#color, index);
+        );
+
+    for color in sort keys factorGroupsHT do
+        initialPartition = append(initialPartition, factorGroupsHT#color);
+
+    rowGroupsHT := new MutableHashTable;
+
+    for offset from 0 to #rowEntries - 1 do (
+        vertex := rowOffset + offset;
+        color := vertexColors#vertex;
+        if not rowGroupsHT#?color then rowGroupsHT#color = {};
+        rowGroupsHT#color = append(rowGroupsHT#color, vertex);
+        );
+
+    for color in sort keys rowGroupsHT do
+        initialPartition = append(initialPartition, rowGroupsHT#color);
+
+    bestCertificate := null;
+    bestOrder := apply(#ambientFactors, index -> index);
+
+    search := null;
+    search = currPartition -> (
+        refined := refine currPartition;
+        ci := targetCell refined;
+
+        if ci === null then (
+            cert := certFn refined;
+            if bestCertificate === null or cert < bestCertificate then (
+                bestCertificate = cert;
+                bestOrder = select(apply(refined, cell -> cell#0), v -> v < rowOffset);
+                );
+            )
+        else (
+            for vertex in (refined#ci) do
+                search(individualize(refined, ci, vertex));
+            );
+        );
+
+    search initialPartition;
+    bestOrder
+    )
 
 canonicalizeCore = (ambientFactors, summands, summandsF, k) -> (
     isDegeneracy := summandsF =!= null;
@@ -523,73 +713,20 @@ canonicalizeCore = (ambientFactors, summands, summandsF, k) -> (
     if (not isDegeneracy) and #summands == 0 then return {ambientFactors, summands};
 
     totalDynkinRank := sum apply(ambientFactors, ambientFactor -> factorRank ambientFactor);
-    factorCodes := apply(ambientFactors, ambientFactor -> encodeFactor ambientFactor);
 
-    equalFactorBlocks := {};
-    start := 0;
+    bestOrder := canonicalFactorOrder(
+        ambientFactors,
+        summands,
+        if isDegeneracy then summandsF else null);
 
-    while start < #ambientFactors do (
-        stop := start + 1;
-        while stop < #ambientFactors and factorCodes#stop == factorCodes#start do
-            stop = stop + 1;
-
-        block := {};
-        for i from start to stop - 1 do block = append(block, i);
-
-        equalFactorBlocks = append(equalFactorBlocks, block);
-        start = stop;
-        );
-
-    noLargeBlocks := true;
-    for block in equalFactorBlocks do if #block > 1 then noLargeBlocks = false;
-
-    if noLargeBlocks then (
-        summands = sortRows(summands, totalDynkinRank);
-
-        if isDegeneracy then (
-            summandsF = sortRows(summandsF, totalDynkinRank);
-            return {ambientFactors, summands, summandsF, k};
-            );
-
-        return {ambientFactors, summands};
-        );
-
-    blockChoices := apply(
-        equalFactorBlocks,
-        block -> if #block == 1 then {block} else permutations block);
-
-    bestSignature := null;
-    bestOrder := apply(#ambientFactors, index -> index);
-
-    visit := (blockIndex, currentOrder) -> (
-        if blockIndex == #blockChoices then (
-            reorderedE := (reorder(currentOrder, ambientFactors, summands))#1;
-            signature := {sortedSignature(reorderedE, totalDynkinRank)};
-
-            if isDegeneracy then
-                signature = append(
-                    signature,
-                    sortedSignature((reorder(currentOrder, ambientFactors, summandsF))#1, totalDynkinRank));
-
-            if bestSignature === null or signature < bestSignature then (
-                bestSignature = signature;
-                bestOrder = currentOrder;
-                );
-            )
-        else (
-            for choice in blockChoices#blockIndex do
-                visit(blockIndex + 1, join(currentOrder, choice));
-            );
-        );
-
-    visit(0, {});
+    reordered = reorder(bestOrder, ambientFactors, summands);
+    ambientFactors = reordered#0;
+    summands = reordered#1;
 
     if isDegeneracy then
         summandsF = (reorder(bestOrder, ambientFactors, summandsF))#1;
 
-    reordered = reorder(bestOrder, ambientFactors, summands);
-    ambientFactors = reordered#0;
-    summands = sortRows(reordered#1, totalDynkinRank);
+    summands = sortRows(summands, totalDynkinRank);
 
     if isDegeneracy then
         return {ambientFactors, summands, sortRows(summandsF, totalDynkinRank), k};
@@ -736,7 +873,7 @@ Node
    ZeroLocus62 label codec for flag-variety bundles
   Description
    Text
-    The package implements the ZeroLocus62 v2.1 wire format, including signed
+    The package implements the ZeroLocus62 v2.2 wire format, including signed
     bundle coefficients, canonicalization, and degeneracy loci.
 ///
 

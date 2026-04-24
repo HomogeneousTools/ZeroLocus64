@@ -1,6 +1,6 @@
-"""ZeroLocus62 v2.1 canonical label codec for bundles, zero loci, and degeneracy loci.
+"""ZeroLocus62 v2.2 canonical label codec for bundles, zero loci, and degeneracy loci.
 
-This module is the reference Python implementation of the ZeroLocus62 v2.1
+This module is the reference Python implementation of the ZeroLocus62 v2.2
 specification.
 
 ZeroLocus62 uses the 62-character lexicographic alphabet
@@ -374,72 +374,126 @@ def _reorder(
     ]
 
 
-def _column_profile(
-    index: int,
+def _serialize_weights(weights: list[int]) -> str:
+    return "[" + ",".join(str(value) for value in weights) + "]"
+
+
+def _canonical_factor_order(
+    factors: list[Factor],
     summands: list[list[list[int]]],
     summands_f: list[list[list[int]]] | None,
-) -> tuple[tuple[object, ...], ...]:
-    profile = [tuple(row[index]) for row in summands]
+) -> list[int]:
+    if len(factors) < 2:
+        return list(range(len(factors)))
+
+    factor_vertices = list(range(len(factors)))
+    row_offset = len(factors)
+    row_entries: list[tuple[str, int, list[list[int]]]] = [("E", index, row) for index, row in enumerate(summands)]
     if summands_f is not None:
-        profile.append(("__split__",))
-        profile.extend(tuple(row[index]) for row in summands_f)
-    return tuple(profile)
+        row_entries.extend(("F", index, row) for index, row in enumerate(summands_f))
+    if not row_entries:
+        return list(range(len(factors)))
 
+    vertex_colors: dict[int, str] = {
+        index: "F:" + _encode_factor(factor) for index, factor in enumerate(factors)
+    }
+    edge_labels: dict[tuple[int, int], str] = {}
+    row_vertices = list(range(row_offset, row_offset + len(row_entries)))
+    for vertex, (bundle_tag, _row_index, row) in zip(row_vertices, row_entries, strict=True):
+        vertex_colors[vertex] = "R:" + bundle_tag
+        for factor_index, weights in enumerate(row):
+            label = _serialize_weights(weights)
+            edge_labels[(factor_index, vertex)] = label
+            edge_labels[(vertex, factor_index)] = label
 
-def _iter_unique_block_orders(
-    block: list[int],
-    summands: list[list[list[int]]],
-    summands_f: list[list[list[int]]] | None,
-):
-    buckets: dict[tuple[tuple[int, ...], ...], list[int]] = {}
-    for index in block:
-        buckets.setdefault(_column_profile(index, summands, summands_f), []).append(index)
-    if len(buckets) == len(block):
-        working = list(block)
+    def cell_key(vertex: int, cell: tuple[int, ...]) -> str:
+        return ";".join(sorted(edge_labels.get((vertex, other), "~") for other in cell))
 
-        def visit(position: int):
-            if position == len(working):
-                yield list(working)
-                return
-            for swap_index in range(position, len(working)):
-                working[position], working[swap_index] = (
-                    working[swap_index],
-                    working[position],
-                )
-                yield from visit(position + 1)
-                working[position], working[swap_index] = (
-                    working[swap_index],
-                    working[position],
-                )
+    def refine(partition: list[tuple[int, ...]]) -> list[tuple[int, ...]]:
+        current = partition
+        while True:
+            updated: list[tuple[int, ...]] = []
+            changed = False
+            for cell in current:
+                buckets: dict[str, list[int]] = {}
+                for vertex in cell:
+                    signature = "|".join(
+                        [vertex_colors[vertex]]
+                        + [cell_key(vertex, other_cell) for other_cell in current]
+                    )
+                    buckets.setdefault(signature, []).append(vertex)
+                if len(buckets) == 1:
+                    updated.append(cell)
+                    continue
+                changed = True
+                for signature in sorted(buckets):
+                    updated.append(tuple(buckets[signature]))
+            if not changed:
+                return current
+            current = updated
 
-        yield from visit(0)
-        return
-
-    groups = [buckets[key] for key in buckets]
-    counts = [len(group) for group in groups]
-    template = list(range(len(groups)))
-    expanded: list[tuple[int, int]] = []
-
-    def fill(group_index: int) -> int:
-        return len(groups[group_index]) - counts[group_index] - 1
-
-    def visit(position: int):
-        if position == len(block):
-            yield [
-                groups[group_index][offset]
-                for group_index, offset in expanded
-            ]
-            return
-        for group_index in template:
-            if counts[group_index] == 0:
+    def target_cell(partition: list[tuple[int, ...]]) -> int | None:
+        best_index = None
+        best_key = None
+        for index, cell in enumerate(partition):
+            if len(cell) <= 1:
                 continue
-            counts[group_index] -= 1
-            expanded.append((group_index, fill(group_index)))
-            yield from visit(position + 1)
-            expanded.pop()
-            counts[group_index] += 1
+            key = (len(cell), 0 if cell[0] < row_offset else 1, index)
+            if best_key is None or key < best_key:
+                best_index = index
+                best_key = key
+        return best_index
 
-    yield from visit(0)
+    def individualize(
+        partition: list[tuple[int, ...]], cell_index: int, chosen: int
+    ) -> list[tuple[int, ...]]:
+        cell = partition[cell_index]
+        remainder = tuple(vertex for vertex in cell if vertex != chosen)
+        result = partition[:cell_index] + [(chosen,)]
+        if remainder:
+            result.append(remainder)
+        result.extend(partition[cell_index + 1 :])
+        return result
+
+    def certificate(partition: list[tuple[int, ...]]) -> str:
+        ordered = [cell[0] for cell in partition]
+        colors = "|".join(vertex_colors[vertex] for vertex in ordered)
+        edges = []
+        for left_index, left in enumerate(ordered):
+            for right in ordered[left_index + 1 :]:
+                edges.append(edge_labels.get((left, right), "~"))
+        return colors + "||" + "|".join(edges)
+
+    initial_partition: list[tuple[int, ...]] = []
+    factor_groups: dict[str, list[int]] = {}
+    for index, factor in enumerate(factors):
+        factor_groups.setdefault("F:" + _encode_factor(factor), []).append(index)
+    for color in sorted(factor_groups):
+        initial_partition.append(tuple(factor_groups[color]))
+    row_groups: dict[str, list[int]] = {}
+    for vertex in row_vertices:
+        row_groups.setdefault(vertex_colors[vertex], []).append(vertex)
+    for color in sorted(row_groups):
+        initial_partition.append(tuple(row_groups[color]))
+
+    best_certificate: str | None = None
+    best_order = list(range(len(factors)))
+
+    def search(partition: list[tuple[int, ...]]) -> None:
+        nonlocal best_certificate, best_order
+        refined = refine(partition)
+        cell_index = target_cell(refined)
+        if cell_index is None:
+            current_certificate = certificate(refined)
+            if best_certificate is None or current_certificate < best_certificate:
+                best_certificate = current_certificate
+                best_order = [cell[0] for cell in refined if cell[0] < row_offset]
+            return
+        for vertex in refined[cell_index]:
+            search(individualize(refined, cell_index, vertex))
+
+    search(initial_partition)
+    return best_order
 
 
 def canonicalize(
@@ -472,55 +526,7 @@ def canonicalize(
     if not is_degeneracy and not summands:
         return factors, summands
     total_dynkin_rank = sum(factor.rank for factor in factors)
-    factor_codes = [_encode_factor(factor) for factor in factors]
-    equal_factor_blocks: list[list[int]] = []
-    start = 0
-    while start < len(factors):
-        stop = start + 1
-        while stop < len(factors) and factor_codes[stop] == factor_codes[start]:
-            stop += 1
-        equal_factor_blocks.append(list(range(start, stop)))
-        start = stop
-
-    def sorted_sig(rows):
-        return tuple(sorted(_encode_summand(row, total_dynkin_rank) for row in rows))
-
-    if all(len(block) == 1 for block in equal_factor_blocks):
-        summands.sort(key=lambda row: _encode_summand(row, total_dynkin_rank))
-        if is_degeneracy:
-            summands_f.sort(key=lambda row: _encode_summand(row, total_dynkin_rank))
-            return factors, summands, summands_f, k
-        return factors, summands
-
-    best_signature = None
-    best_order = list(range(len(factors)))
-    current_order: list[int] = []
-
-    def explore(block_index: int) -> None:
-        nonlocal best_signature, best_order
-        if block_index == len(equal_factor_blocks):
-            _, reordered_e = _reorder(current_order, factors, summands)
-            signature = (sorted_sig(reordered_e),)
-            if is_degeneracy:
-                _, reordered_f = _reorder(current_order, factors, summands_f)
-                signature = (sorted_sig(reordered_e), sorted_sig(reordered_f))
-            if best_signature is None or signature < best_signature:
-                best_signature = signature
-                best_order = list(current_order)
-            return
-
-        block = equal_factor_blocks[block_index]
-        if len(block) == 1:
-            current_order.extend(block)
-            explore(block_index + 1)
-            current_order.pop()
-            return
-        for choice in _iter_unique_block_orders(block, summands, summands_f):
-            current_order.extend(choice)
-            explore(block_index + 1)
-            del current_order[-len(choice) :]
-
-    explore(0)
+    best_order = _canonical_factor_order(factors, summands, summands_f)
     if is_degeneracy:
         _, summands_f = _reorder(best_order, factors, summands_f)
     factors, summands = _reorder(best_order, factors, summands)

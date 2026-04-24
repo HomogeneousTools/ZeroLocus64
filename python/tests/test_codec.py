@@ -61,6 +61,18 @@ SPEC_EXAMPLES = [
         [[[1], [0]], [[0], [1]]],
         "11.2122",
     ),
+    (
+        "(P1)^3 v2.2 positive difference",
+        [Factor("A", 1, 1), Factor("A", 1, 1), Factor("A", 1, 1)],
+        [[[0], [0], [1]], [[0], [2], [0]]],
+        "111.2232",
+    ),
+    (
+        "(P1)^3 v2.2 signed difference",
+        [Factor("A", 1, 1), Factor("A", 1, 1), Factor("A", 1, 1)],
+        [[[-1], [-1], [-1]], [[-1], [-1], [0]]],
+        "111.126127",
+    ),
 ]
 
 
@@ -146,12 +158,31 @@ def test_curated_canonicalization_cases_match_their_expected_labels(
     )
 
 
+def test_v22_graph_canonicalization_changes_selected_v21_labels(
+    curated_cases: list[dict],
+) -> None:
+    indexed = {case["name"]: case for case in curated_cases}
+    for name in (
+        "v22_equal_factors_positive_difference",
+        "v22_equal_factors_signed_difference",
+    ):
+        case = indexed[name]
+        factors = factors_from_case(case)
+        summands = case["summands"]
+        assert encode_label(factors, summands) == case["label"]
+        assert case["label_v21"] != case["label"]
+        with pytest.raises(ValueError, match="not in canonical form"):
+            decode_label(case["label_v21"])
+
+
 @pytest.mark.parametrize(
     ("label", "canonical"),
     [
         ("201.25", "120.26"),
         ("1.2120", "1.2021"),
         ("11.2221", "11.2122"),
+        ("111.2136", "111.2232"),
+        ("111.123127", "111.126127"),
     ],
 )
 def test_noncanonical_labels_are_rejected(label: str, canonical: str) -> None:

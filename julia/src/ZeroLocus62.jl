@@ -1,9 +1,9 @@
 """
     ZeroLocus62
 
-    Reference Julia implementation of the ZeroLocus62 v2.1 label codec.
+    Reference Julia implementation of the ZeroLocus62 v2.2 label codec.
 
-This module implements the ZeroLocus62 v2.1 specification using the Base62
+This module implements the ZeroLocus62 v2.2 specification using the Base62
 alphabet `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`.
 """
 module ZeroLocus62
@@ -358,71 +358,147 @@ function reorder(
     [[row[index] for index in order] for row in summands]
 end
 
-function column_profile(
-    index::Int,
-    summands::Vector{Vector{Vector{Int}}},
-    summands_f::Union{Vector{Vector{Vector{Int}}},Nothing},
-)
-    profile = Any[Tuple(row[index]) for row in summands]
-    if summands_f !== nothing
-        push!(profile, :split)
-        append!(profile, Tuple(row[index]) for row in summands_f)
-    end
-    return Tuple(profile)
-end
+serialize_weights(weights::Vector{Int}) = "[" * join(string.(weights), ",") * "]"
 
-function visit_unique_block_orders(
-    callback::Function,
-    block_positions::Vector{Int},
+function canonical_factor_order(
+    factors::Vector{Factor},
     summands::Vector{Vector{Vector{Int}}},
     summands_f::Union{Vector{Vector{Vector{Int}}},Nothing},
 )
-    buckets = Dict{Tuple,Vector{Int}}()
-    for index in block_positions
-        profile = column_profile(index, summands, summands_f)
-        push!(get!(()->Int[], buckets, profile), index)
+    length(factors) < 2 && return collect(eachindex(factors))
+
+    row_entries = Tuple{Char,Int,Vector{Vector{Int}}}[]
+    append!(row_entries, ('E', index, row) for (index, row) in enumerate(summands))
+    if summands_f !== nothing
+        append!(row_entries, ('F', index, row) for (index, row) in enumerate(summands_f))
     end
-    if length(buckets) == length(block_positions)
-        function explore_permutations(working::Vector{Int}, position::Int)
-            if position > length(working)
-                callback(copy(working))
-                return
+    isempty(row_entries) && return collect(eachindex(factors))
+
+    row_offset = length(factors)
+    vertex_colors = Dict{Int,String}()
+    edge_labels = Dict{Tuple{Int,Int},String}()
+
+    for (index, factor) in enumerate(factors)
+        vertex_colors[index] = "F:" * encode_factor(factor)
+    end
+    for (offset, (bundle_tag, _, row)) in enumerate(row_entries)
+        vertex = row_offset + offset
+        vertex_colors[vertex] = "R:" * string(bundle_tag)
+        for (factor_index, weights) in enumerate(row)
+            label = serialize_weights(weights)
+            edge_labels[(factor_index, vertex)] = label
+            edge_labels[(vertex, factor_index)] = label
+        end
+    end
+
+    function cell_key(vertex::Int, cell::Vector{Int})
+        return join(sort([get(edge_labels, (vertex, other), "~") for other in cell]), ";")
+    end
+
+    function refine(partition::Vector{Vector{Int}})
+        current = partition
+        while true
+            updated = Vector{Vector{Int}}()
+            changed = false
+            for cell in current
+                buckets = Dict{String,Vector{Int}}()
+                for vertex in cell
+                    parts = String[vertex_colors[vertex]]
+                    append!(parts, (cell_key(vertex, other_cell) for other_cell in current))
+                    signature = join(parts, "|")
+                    push!(get!(()->Int[], buckets, signature), vertex)
+                end
+                if length(buckets) == 1
+                    push!(updated, cell)
+                    continue
+                end
+                changed = true
+                for signature in sort!(collect(keys(buckets)))
+                    push!(updated, buckets[signature])
+                end
             end
-            for swap_index = position:length(working)
-                working[position], working[swap_index] =
-                    working[swap_index], working[position]
-                explore_permutations(working, position + 1)
-                working[position], working[swap_index] =
-                    working[swap_index], working[position]
+            changed || return current
+            current = updated
+        end
+    end
+
+    function target_cell(partition::Vector{Vector{Int}})
+        best_index = nothing
+        best_key = nothing
+        for (index, cell) in enumerate(partition)
+            length(cell) <= 1 && continue
+            key = (length(cell), cell[1] <= row_offset ? 0 : 1, index)
+            if best_key === nothing || key < best_key
+                best_key = key
+                best_index = index
             end
         end
-        explore_permutations(copy(block_positions), 1)
-        return
+        return best_index
     end
 
-    groups = collect(values(buckets))
-    counts = length.(groups)
-    expanded = Tuple{Int,Int}[]
+    function individualize(partition::Vector{Vector{Int}}, cell_index::Int, chosen::Int)
+        cell = partition[cell_index]
+        remainder = [vertex for vertex in cell if vertex != chosen]
+        result = Vector{Vector{Int}}()
+        append!(result, partition[1:(cell_index-1)])
+        push!(result, [chosen])
+        isempty(remainder) || push!(result, remainder)
+        append!(result, partition[(cell_index+1):end])
+        return result
+    end
 
-    function explore_multiset(position::Int)
-        if position > length(block_positions)
-            callback([groups[group_index][offset] for (group_index, offset) in expanded])
+    function certificate(partition::Vector{Vector{Int}})
+        ordered = [cell[1] for cell in partition]
+        colors = join((vertex_colors[vertex] for vertex in ordered), "|")
+        edges = String[]
+        for left_index = 1:length(ordered)
+            for right_index = (left_index + 1):length(ordered)
+                push!(edges, get(edge_labels, (ordered[left_index], ordered[right_index]), "~"))
+            end
+        end
+        return colors * "||" * join(edges, "|")
+    end
+
+    initial_partition = Vector{Vector{Int}}()
+    factor_groups = Dict{String,Vector{Int}}()
+    for (index, factor) in enumerate(factors)
+        color = "F:" * encode_factor(factor)
+        push!(get!(()->Int[], factor_groups, color), index)
+    end
+    for color in sort!(collect(keys(factor_groups)))
+        push!(initial_partition, factor_groups[color])
+    end
+    row_groups = Dict{String,Vector{Int}}()
+    for offset = 1:length(row_entries)
+        vertex = row_offset + offset
+        color = vertex_colors[vertex]
+        push!(get!(()->Int[], row_groups, color), vertex)
+    end
+    for color in sort!(collect(keys(row_groups)))
+        push!(initial_partition, row_groups[color])
+    end
+
+    best_certificate = nothing
+    best_order = collect(eachindex(factors))
+
+    function search(partition::Vector{Vector{Int}})
+        refined = refine(partition)
+        cell_index = target_cell(refined)
+        if cell_index === nothing
+            current_certificate = certificate(refined)
+            if best_certificate === nothing || current_certificate < best_certificate
+                best_certificate = current_certificate
+                best_order = [cell[1] for cell in refined if cell[1] <= row_offset]
+            end
             return
         end
-        for group_index = 1:length(groups)
-            counts[group_index] == 0 && continue
-            counts[group_index] -= 1
-            push!(
-                expanded,
-                (group_index, length(groups[group_index]) - counts[group_index]),
-            )
-            explore_multiset(position + 1)
-            pop!(expanded)
-            counts[group_index] += 1
+        for vertex in refined[cell_index]
+            search(individualize(refined, cell_index, vertex))
         end
     end
 
-    explore_multiset(1)
+    search(initial_partition)
+    return best_order
 end
 
 """
@@ -452,75 +528,14 @@ function canonicalize(
     if is_degeneracy
         _, summands_f = reorder(initial_order, factors, summands_f)
     end
-    # Short-circuit: with empty summands the initial sort IS canonical — all
-    # permutations of equal-factor blocks give the same (empty) signature, so
-    # there is no need to enumerate them combinatorially.
+    # Short-circuit: with empty summands the initial ambient sort is already
+    # canonical, because the graph-canonization step has no row vertices to
+    # distinguish equal factors further.
     if !is_degeneracy && isempty(summands)
         return factors, summands
     end
     total_dynkin_rank = sum(factor.rank for factor in factors)
-    factor_codes = encode_factor.(factors)
-    equal_factor_blocks = Vector{Vector{Int}}()
-    start = 1
-    while start <= length(factors)
-        stop = start + 1
-        while stop <= length(factors) && factor_codes[stop] == factor_codes[start]
-            stop += 1
-        end
-        push!(equal_factor_blocks, collect(start:(stop-1)))
-        start = stop
-    end
-
-    function sorted_sig(rows)
-        return Tuple(sort(encode_summand.(rows, Ref(total_dynkin_rank))))
-    end
-
-    if all(length(block_positions) == 1 for block_positions in equal_factor_blocks)
-        sort!(summands; by = row -> encode_summand(row, total_dynkin_rank))
-        if is_degeneracy
-            sort!(summands_f; by = row -> encode_summand(row, total_dynkin_rank))
-            return factors, summands, summands_f, k
-        end
-        return factors, summands
-    end
-
-    best_signature = nothing
-    best_order = collect(eachindex(factors))
-    current_order = Int[]
-
-    function explore(block_index::Int)
-        if block_index > length(equal_factor_blocks)
-            _, reordered_e = reorder(current_order, factors, summands)
-            signature = (sorted_sig(reordered_e),)
-            if is_degeneracy
-                _, reordered_f = reorder(current_order, factors, summands_f)
-                signature = (sorted_sig(reordered_e), sorted_sig(reordered_f))
-            end
-            if best_signature === nothing || signature < best_signature
-                best_signature = signature
-                best_order = copy(current_order)
-            end
-            return
-        end
-        block_positions = equal_factor_blocks[block_index]
-        if length(block_positions) == 1
-            append!(current_order, block_positions)
-            explore(block_index + 1)
-            for _ = 1:length(block_positions)
-                pop!(current_order)
-            end
-            return
-        end
-        visit_unique_block_orders(block_positions, summands, summands_f) do choice
-            append!(current_order, choice)
-            explore(block_index + 1)
-            for _ = 1:length(choice)
-                pop!(current_order)
-            end
-        end
-    end
-
-    explore(1)
+    best_order = canonical_factor_order(factors, summands, summands_f)
     if is_degeneracy
         _, summands_f = reorder(best_order, factors, summands_f)
     end

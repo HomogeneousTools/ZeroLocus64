@@ -102,6 +102,16 @@ end
         ),
         ("11.23", [Factor('A', 1, 1), Factor('A', 1, 1)], [[[1], [1]]]),
         ("11.2122", [Factor('A', 1, 1), Factor('A', 1, 1)], [[[1], [0]], [[0], [1]]]),
+        (
+            "111.2232",
+            [Factor('A', 1, 1), Factor('A', 1, 1), Factor('A', 1, 1)],
+            [[[0], [0], [1]], [[0], [2], [0]]],
+        ),
+        (
+            "111.126127",
+            [Factor('A', 1, 1), Factor('A', 1, 1), Factor('A', 1, 1)],
+            [[[-1], [-1], [-1]], [[-1], [-1], [0]]],
+        ),
     ]
     for (label, factors, summands) in examples
         @test encode_label(factors, summands) == label
@@ -132,6 +142,15 @@ end
     factors = factors_from_case(canonical_case)
     summands = [reverse(row) for row in summands_from_case(canonical_case)]
     @test encode_label(reverse(factors), reverse(summands)) == canonical_case["label"]
+
+    for name in ["v22_equal_factors_positive_difference", "v22_equal_factors_signed_difference"]
+        case = indexed[name]
+        factors = factors_from_case(case)
+        summands = summands_from_case(case)
+        @test encode_label(factors, summands) == case["label"]
+        @test String(case["label_v21"]) != String(case["label"])
+        assert_decode_error(String(case["label_v21"]), "not in canonical form")
+    end
 end
 
 @testset "Corpus Vectors" begin
@@ -201,10 +220,14 @@ end
     assert_decode_error("201.25", "not in canonical form")
     assert_decode_error("1.2120", "not in canonical form")
     assert_decode_error("11.2221", "not in canonical form")
+    assert_decode_error("111.2136", "not in canonical form")
+    assert_decode_error("111.123127", "not in canonical form")
 
     @test decode_label("120.26") isa NamedTuple
     @test decode_label("1.2021") isa NamedTuple
     @test decode_label("11.2122") isa NamedTuple
+    @test decode_label("111.2232") isa NamedTuple
+    @test decode_label("111.126127") isa NamedTuple
 end
 
 @testset "is_canonical" begin

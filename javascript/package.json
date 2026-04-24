@@ -1,7 +1,7 @@
 {
   "name": "zerolocus62",
-  "version": "2.1.0",
-  "description": "Reference JavaScript implementation of the ZeroLocus62 v2.1 encoding format",
+  "version": "2.2.0",
+  "description": "Reference JavaScript implementation of the ZeroLocus62 v2.2 encoding format",
   "type": "module",
   "author": "Pieter Belmans <pieterbelmans@gmail.com>",
   "license": "MIT",

@@ -122,26 +122,6 @@ function compareLexicographic(left, right) {
   return 0;
 }
 
-function compareStringTuples(left, right) {
-  for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
-    const comparison = compareLexicographic(left[index], right[index]);
-    if (comparison !== 0) {
-      return comparison;
-    }
-  }
-  return left.length - right.length;
-}
-
-function comparePairSignatures(left, right) {
-  for (let index = 0; index < Math.min(left.length, right.length); index += 1) {
-    const comparison = compareStringTuples(left[index], right[index]);
-    if (comparison !== 0) {
-      return comparison;
-    }
-  }
-  return left.length - right.length;
-}
-
 export class Factor {
   constructor(group, rank, mask) {
     this.group = String(group);
@@ -511,78 +491,190 @@ function reorder(order, factors, summands) {
   ];
 }
 
-function columnProfile(index, summands, summandsF) {
-  const profile = summands.map((row) => JSON.stringify(row[index]));
-  if (summandsF !== null) {
-    profile.push("|");
-    profile.push(...summandsF.map((row) => JSON.stringify(row[index])));
-  }
-  return profile.join(";");
+function serializeWeights(weights) {
+  return `[${weights.join(",")}]`;
 }
 
-function forEachUniqueBlockOrder(block, summands, summandsF, callback) {
-  const buckets = new Map();
-  for (const index of block) {
-    const profile = columnProfile(index, summands, summandsF);
-    const bucket = buckets.get(profile);
-    if (bucket) {
-      bucket.push(index);
-    } else {
-      buckets.set(profile, [index]);
-    }
+function canonicalFactorOrder(factors, summands, summandsF) {
+  if (factors.length < 2) {
+    return Array.from({ length: factors.length }, (_, index) => index);
   }
-  if (buckets.size === block.length) {
-    const working = block.slice();
-    function visit(position) {
-      if (position === working.length) {
-        callback(working);
-        return;
-      }
-      for (
-        let swapIndex = position;
-        swapIndex < working.length;
-        swapIndex += 1
-      ) {
-        [working[position], working[swapIndex]] = [
-          working[swapIndex],
-          working[position],
-        ];
-        visit(position + 1);
-        [working[position], working[swapIndex]] = [
-          working[swapIndex],
-          working[position],
-        ];
-      }
-    }
-    visit(0);
-    return;
+  const rowEntries = summands.map((row, index) => ["E", index, row]);
+  if (summandsF !== null) {
+    rowEntries.push(...summandsF.map((row, index) => ["F", index, row]));
+  }
+  if (rowEntries.length === 0) {
+    return Array.from({ length: factors.length }, (_, index) => index);
   }
 
-  const groups = [...buckets.values()];
-  const counts = groups.map((group) => group.length);
-  const expanded = [];
+  const rowOffset = factors.length;
+  const vertexColors = new Map();
+  const edgeLabels = new Map();
+  for (let index = 0; index < factors.length; index += 1) {
+    vertexColors.set(index, `F:${encodeFactor(factors[index])}`);
+  }
+  rowEntries.forEach(([bundleTag, _rowIndex, row], offset) => {
+    const vertex = rowOffset + offset;
+    vertexColors.set(vertex, `R:${bundleTag}`);
+    row.forEach((weights, factorIndex) => {
+      const label = serializeWeights(weights);
+      edgeLabels.set(`${factorIndex}:${vertex}`, label);
+      edgeLabels.set(`${vertex}:${factorIndex}`, label);
+    });
+  });
 
-  function visit(position) {
-    if (position === block.length) {
-      callback(expanded.map(([groupIndex, offset]) => groups[groupIndex][offset]));
-      return;
+  function cellKey(vertex, cell) {
+    return cell
+      .map((other) => edgeLabels.get(`${vertex}:${other}`) ?? "~")
+      .sort(compareLexicographic)
+      .join(";");
+  }
+
+  function refine(partition) {
+    let current = partition;
+    for (;;) {
+      const updated = [];
+      let changed = false;
+      for (const cell of current) {
+        const buckets = new Map();
+        for (const vertex of cell) {
+          const signatureKey = [
+            vertexColors.get(vertex),
+            ...current.map((otherCell) => cellKey(vertex, otherCell)),
+          ].join("|");
+          const bucket = buckets.get(signatureKey);
+          if (bucket) {
+            bucket.push(vertex);
+          } else {
+            buckets.set(signatureKey, [vertex]);
+          }
+        }
+        if (buckets.size === 1) {
+          updated.push(cell);
+          continue;
+        }
+        changed = true;
+        const ordered = [...buckets.entries()].sort((left, right) =>
+          compareLexicographic(left[0], right[0]),
+        );
+        for (const [, bucket] of ordered) {
+          updated.push(bucket);
+        }
+      }
+      if (!changed) {
+        return current;
+      }
+      current = updated;
     }
-    for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
-      if (counts[groupIndex] === 0) {
+  }
+
+  function targetCell(partition) {
+    let bestIndex = null;
+    let bestKey = null;
+    for (let index = 0; index < partition.length; index += 1) {
+      const cell = partition[index];
+      if (cell.length <= 1) {
         continue;
       }
-      counts[groupIndex] -= 1;
-      expanded.push([
-        groupIndex,
-        groups[groupIndex].length - counts[groupIndex] - 1,
-      ]);
-      visit(position + 1);
-      expanded.pop();
-      counts[groupIndex] += 1;
+      const key = [cell.length, cell[0] < rowOffset ? 0 : 1, index];
+      if (
+        bestKey === null ||
+        key[0] < bestKey[0] ||
+        (key[0] === bestKey[0] &&
+          (key[1] < bestKey[1] ||
+            (key[1] === bestKey[1] && key[2] < bestKey[2])))
+      ) {
+        bestIndex = index;
+        bestKey = key;
+      }
+    }
+    return bestIndex;
+  }
+
+  function individualize(partition, cellIndex, chosen) {
+    const cell = partition[cellIndex];
+    const remainder = cell.filter((vertex) => vertex !== chosen);
+    const result = [...partition.slice(0, cellIndex), [chosen]];
+    if (remainder.length > 0) {
+      result.push(remainder);
+    }
+    result.push(...partition.slice(cellIndex + 1));
+    return result;
+  }
+
+  function certificate(partition) {
+    const ordered = partition.map((cell) => cell[0]);
+    const colors = ordered.map((vertex) => vertexColors.get(vertex));
+    const edges = [];
+    for (let leftIndex = 0; leftIndex < ordered.length; leftIndex += 1) {
+      for (
+        let rightIndex = leftIndex + 1;
+        rightIndex < ordered.length;
+        rightIndex += 1
+      ) {
+        edges.push(
+          edgeLabels.get(`${ordered[leftIndex]}:${ordered[rightIndex]}`) ?? "~",
+        );
+      }
+    }
+    return `${colors.join("|")}||${edges.join("|")}`;
+  }
+
+  const initialPartition = [];
+  const factorGroups = new Map();
+  for (let index = 0; index < factors.length; index += 1) {
+    const color = vertexColors.get(index);
+    const group = factorGroups.get(color);
+    if (group) {
+      group.push(index);
+    } else {
+      factorGroups.set(color, [index]);
+    }
+  }
+  for (const color of [...factorGroups.keys()].sort(compareLexicographic)) {
+    initialPartition.push(factorGroups.get(color));
+  }
+  const rowGroups = new Map();
+  for (let offset = 0; offset < rowEntries.length; offset += 1) {
+    const vertex = rowOffset + offset;
+    const color = vertexColors.get(vertex);
+    const group = rowGroups.get(color);
+    if (group) {
+      group.push(vertex);
+    } else {
+      rowGroups.set(color, [vertex]);
+    }
+  }
+  for (const color of [...rowGroups.keys()].sort(compareLexicographic)) {
+    initialPartition.push(rowGroups.get(color));
+  }
+
+  let bestCertificate = null;
+  let bestOrder = Array.from({ length: factors.length }, (_, index) => index);
+
+  function search(partition) {
+    const refined = refine(partition);
+    const cellIndex = targetCell(refined);
+    if (cellIndex === null) {
+      const currentCertificate = certificate(refined);
+      if (
+        bestCertificate === null ||
+        compareLexicographic(currentCertificate, bestCertificate) < 0
+      ) {
+        bestCertificate = currentCertificate;
+        bestOrder = refined
+          .map((cell) => cell[0])
+          .filter((vertex) => vertex < rowOffset);
+      }
+      return;
+    }
+    for (const vertex of refined[cellIndex]) {
+      search(individualize(refined, cellIndex, vertex));
     }
   }
 
-  visit(0);
+  search(initialPartition);
+  return bestOrder;
 }
 
 export function canonicalize(factors, summands, summandsF, k) {
@@ -618,91 +710,16 @@ export function canonicalize(factors, summands, summandsF, k) {
     (sum, factor) => sum + factor.rank,
     0,
   );
-  const factorCodes = orderedFactors.map((factor) => encodeFactor(factor));
-  const equalFactorBlocks = [];
-  for (let start = 0; start < orderedFactors.length; ) {
-    let stop = start + 1;
-    while (
-      stop < orderedFactors.length &&
-      factorCodes[stop] === factorCodes[start]
-    ) {
-      stop += 1;
-    }
-    equalFactorBlocks.push(
-      Array.from({ length: stop - start }, (_, offset) => start + offset),
-    );
-    start = stop;
-  }
-
   const sortBySummandCode = (left, right) =>
     compareLexicographic(
       encodeSummand(left, totalDynkinRank),
       encodeSummand(right, totalDynkinRank),
     );
-
-  if (equalFactorBlocks.every((block) => block.length === 1)) {
-    orderedSummands.sort(sortBySummandCode);
-    if (isDegeneracy) {
-      orderedSummandsF.sort(sortBySummandCode);
-      return [orderedFactors, orderedSummands, orderedSummandsF, k];
-    }
-    return [orderedFactors, orderedSummands];
-  }
-
-  let bestSignature = null;
-  let bestOrder = Array.from(
-    { length: orderedFactors.length },
-    (_, index) => index,
+  const bestOrder = canonicalFactorOrder(
+    orderedFactors,
+    orderedSummands,
+    orderedSummandsF,
   );
-  const currentOrder = [];
-
-  function sortedSig(summands) {
-    return summands
-      .map((row) => encodeSummand(row, totalDynkinRank))
-      .sort(compareLexicographic);
-  }
-
-  function explore(blockIndex) {
-    if (blockIndex === equalFactorBlocks.length) {
-      const [, trialE] = reorder(currentOrder, orderedFactors, orderedSummands);
-      const signature = [sortedSig(trialE)];
-      if (isDegeneracy) {
-        const [, trialF] = reorder(
-          currentOrder,
-          orderedFactors,
-          orderedSummandsF,
-        );
-        signature.push(sortedSig(trialF));
-      }
-      if (
-        bestSignature === null ||
-        comparePairSignatures(signature, bestSignature) < 0
-      ) {
-        bestSignature = signature;
-        bestOrder = currentOrder.slice();
-      }
-      return;
-    }
-    const block = equalFactorBlocks[blockIndex];
-    if (block.length === 1) {
-      currentOrder.push(block[0]);
-      explore(blockIndex + 1);
-      currentOrder.pop();
-      return;
-    }
-    forEachUniqueBlockOrder(
-      block,
-      orderedSummands,
-      orderedSummandsF,
-      (choice) => {
-        currentOrder.push(...choice);
-        explore(blockIndex + 1);
-        currentOrder.length -= choice.length;
-      },
-    );
-  }
-
-  explore(0);
   if (isDegeneracy) {
     orderedSummandsF = reorder(bestOrder, orderedFactors, orderedSummandsF)[1];
   }

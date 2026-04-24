@@ -73,6 +73,24 @@ const SPEC_EXAMPLES = [
     ],
     "11.2122",
   ],
+  [
+    "(P1)^3 v2.2 positive difference",
+    [new Factor("A", 1, 1), new Factor("A", 1, 1), new Factor("A", 1, 1)],
+    [
+      [[0], [0], [1]],
+      [[0], [2], [0]],
+    ],
+    "111.2232",
+  ],
+  [
+    "(P1)^3 v2.2 signed difference",
+    [new Factor("A", 1, 1), new Factor("A", 1, 1), new Factor("A", 1, 1)],
+    [
+      [[-1], [-1], [-1]],
+      [[-1], [-1], [0]],
+    ],
+    "111.126127",
+  ],
 ];
 
 test("public constants are stable", () => {
@@ -165,6 +183,27 @@ test("curated canonicalization case stays stable", () => {
   );
 });
 
+test("v2.2 graph canonicalization changes selected v2.1 labels", () => {
+  for (const name of [
+    "v22_equal_factors_positive_difference",
+    "v22_equal_factors_signed_difference",
+  ]) {
+    const exampleCase = examplesData.curated_cases.find(
+      (candidate) => candidate.name === name,
+    );
+    assert.ok(exampleCase);
+    const factors = factorsFromCase(exampleCase);
+    assert.equal(encodeLabel(factors, exampleCase.summands), exampleCase.label);
+    assert.notEqual(exampleCase.label_v21, exampleCase.label);
+    assert.throws(
+      () => decodeLabel(exampleCase.label_v21),
+      (error) =>
+        error instanceof Error &&
+        error.message.includes("not in canonical form"),
+    );
+  }
+});
+
 test("decode results can be normalized against explicit factors", () => {
   const exampleCase = examplesData.curated_cases.find(
     (candidate) => candidate.name === "a3_p1_weight_100",
@@ -180,6 +219,8 @@ for (const [label, canonical] of [
   ["201.25", "120.26"],
   ["1.2120", "1.2021"],
   ["11.2221", "11.2122"],
+  ["111.2136", "111.2232"],
+  ["111.123127", "111.126127"],
 ]) {
   test(`non-canonical label rejected: ${label}`, () => {
     assert.throws(
