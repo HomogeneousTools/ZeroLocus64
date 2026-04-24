@@ -143,7 +143,8 @@ end
     summands = [reverse(row) for row in summands_from_case(canonical_case)]
     @test encode_label(reverse(factors), reverse(summands)) == canonical_case["label"]
 
-    for name in ["v22_equal_factors_positive_difference", "v22_equal_factors_signed_difference"]
+    for name in
+        ["v22_equal_factors_positive_difference", "v22_equal_factors_signed_difference"]
         case = indexed[name]
         factors = factors_from_case(case)
         summands = summands_from_case(case)

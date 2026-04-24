@@ -146,6 +146,5 @@ Deployment to GitHub Pages is handled by [.github/workflows/pages.yml](.github/w
 - **v2.2** — Replaced v2.1's equal-factor permutation minimum with a self-contained graph-certificate canonicalization. No external canonization tool is required, but some canonical labels change.
 
   Examples of the v2.1 → v2.2 change:
-
   - `(P^1)^3`, `O(0,0,1) + O(0,2,0)`: `111.2136` → `111.2232`
   - `(P^1)^3`, `O(-1,-1,-1) + O(-1,-1,0)`: `111.123127` → `111.126127`

@@ -55,7 +55,9 @@ export function formatFundamentalWeightExpression(weights) {
     return "0";
   }
   return terms
-    .map((term, index) => (index === 0 || !term.startsWith("-") ? term : `- ${term.slice(1)}`))
+    .map((term, index) =>
+      index === 0 || !term.startsWith("-") ? term : `- ${term.slice(1)}`,
+    )
     .join(" + ")
     .replaceAll("+ - ", "- ");
 }
@@ -67,14 +69,17 @@ export function formatFundamentalWeightLatex(weights) {
       return;
     }
     const abs = Math.abs(coefficient);
-    const body = abs === 1 ? `\\omega_{${index + 1}}` : `${abs}\\omega_{${index + 1}}`;
+    const body =
+      abs === 1 ? `\\omega_{${index + 1}}` : `${abs}\\omega_{${index + 1}}`;
     terms.push(coefficient < 0 ? `-${body}` : body);
   });
   if (terms.length === 0) {
     return "0";
   }
   return terms
-    .map((term, index) => (index === 0 || !term.startsWith("-") ? term : `- ${term.slice(1)}`))
+    .map((term, index) =>
+      index === 0 || !term.startsWith("-") ? term : `- ${term.slice(1)}`,
+    )
     .join(" + ")
     .replaceAll("+ - ", "- ");
 }

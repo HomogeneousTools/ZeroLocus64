@@ -103,7 +103,9 @@ function normalizeSummands(summands, factors) {
         throw new RangeError("highest-weight entry must be an array");
       }
       if (weights.length !== factors[index].rank) {
-        throw new RangeError("highest-weight length must match the Dynkin rank");
+        throw new RangeError(
+          "highest-weight length must match the Dynkin rank",
+        );
       }
       return weights.map((coefficient) =>
         toSafeInteger(coefficient, "highest-weight coefficient"),

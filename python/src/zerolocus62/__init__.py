@@ -328,7 +328,9 @@ def _decode_bundle_text(
         if value:
             raise ValueError("packed value exceeds range")
         if signed:
-            flat_coefficients = [_zigzag_decode(coefficient) for coefficient in flat_coefficients]
+            flat_coefficients = [
+                _zigzag_decode(coefficient) for coefficient in flat_coefficients
+            ]
 
         row: list[list[int]] = []
         offset = 0
@@ -388,7 +390,9 @@ def _canonical_factor_order(
 
     factor_vertices = list(range(len(factors)))
     row_offset = len(factors)
-    row_entries: list[tuple[str, int, list[list[int]]]] = [("E", index, row) for index, row in enumerate(summands)]
+    row_entries: list[tuple[str, int, list[list[int]]]] = [
+        ("E", index, row) for index, row in enumerate(summands)
+    ]
     if summands_f is not None:
         row_entries.extend(("F", index, row) for index, row in enumerate(summands_f))
     if not row_entries:
@@ -399,7 +403,9 @@ def _canonical_factor_order(
     }
     edge_labels: dict[tuple[int, int], str] = {}
     row_vertices = list(range(row_offset, row_offset + len(row_entries)))
-    for vertex, (bundle_tag, _row_index, row) in zip(row_vertices, row_entries, strict=True):
+    for vertex, (bundle_tag, _row_index, row) in zip(
+        row_vertices, row_entries, strict=True
+    ):
         vertex_colors[vertex] = "R:" + bundle_tag
         for factor_index, weights in enumerate(row):
             label = _serialize_weights(weights)

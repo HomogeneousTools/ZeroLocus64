@@ -160,11 +160,11 @@ The canonical ambient order is the factor-vertex order induced by the lexicograp
 2. Refine this partition repeatedly until stable. For one vertex $v$, its refinement signature is:
    - its current color; and
    - for each current cell $C$, the sorted multiset of edge labels from $v$ to the vertices of $C$, written in the current cell order.
-   Vertices in the same cell whose signatures differ are split into new cells ordered by ascending signature.
+     Vertices in the same cell whose signatures differ are split into new cells ordered by ascending signature.
 3. If the refined partition is discrete, read off the ordered list of singleton vertices and compute its certificate:
    - first the sequence of vertex colors in that order;
    - then the sequence of all upper-triangular edge labels in that order.
-   Both sequences are compared lexicographically in ascending code-unit order.
+     Both sequences are compared lexicographically in ascending code-unit order.
 4. If the refined partition is not discrete, choose a target cell by:
    - minimal cell size among non-singleton cells;
    - on ties, prefer a factor-vertex cell over a row-vertex cell;
@@ -373,7 +373,6 @@ Define the **base descriptor** as follows:
   ```
 
   where:
-
   - `0` is the escape character (Base62 value 0);
   - `<base_characters>` is the shortest non-empty character string representing `B`;
   - `<base_len>` is one character giving the number of characters used by `<base_characters>`.
@@ -524,10 +523,10 @@ For `P^1 x P^1`, the bundle `O(1,0) \oplus O(0,1)` has row encodings `22` and `2
 
 Because v2.2 changes only the canonicalization rule and not the wire syntax, the easiest way to see the difference is to compare labels for the same bundle.
 
-| Object            | Bundle                                                    | v2.1 label    | v2.2 label    |
-| ----------------- | --------------------------------------------------------- | ------------- | ------------- |
-| $(\mathbb{P}^1)^3$ | $\mathcal{O}(0,0,1) \oplus \mathcal{O}(0,2,0)$            | `111.2136`    | `111.2232`    |
-| $(\mathbb{P}^1)^3$ | $\mathcal{O}(-1,-1,-1) \oplus \mathcal{O}(-1,-1,0)$      | `111.123127`  | `111.126127`  |
+| Object             | Bundle                                              | v2.1 label   | v2.2 label   |
+| ------------------ | --------------------------------------------------- | ------------ | ------------ |
+| $(\mathbb{P}^1)^3$ | $\mathcal{O}(0,0,1) \oplus \mathcal{O}(0,2,0)$      | `111.2136`   | `111.2232`   |
+| $(\mathbb{P}^1)^3$ | $\mathcal{O}(-1,-1,-1) \oplus \mathcal{O}(-1,-1,0)$ | `111.123127` | `111.126127` |
 
 Under v2.1 these labels were obtained by minimizing the sorted tuple of encoded summand rows over all equal-factor permutations. Under v2.2 they are obtained from the canonical graph certificate of §6.3, and the resulting canonical ambient order can differ.
 

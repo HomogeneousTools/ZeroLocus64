@@ -59,7 +59,9 @@ test("weight vectors must match the Dynkin rank", () => {
     () => encodeLabel([new Factor("A", 2, 1)], [[[1]]]),
     (error) =>
       error instanceof Error &&
-      error.message.includes("highest-weight length must match the Dynkin rank"),
+      error.message.includes(
+        "highest-weight length must match the Dynkin rank",
+      ),
   );
 });
 

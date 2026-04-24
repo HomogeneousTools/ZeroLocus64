@@ -256,7 +256,8 @@ function encode_bundle_text(summands::Vector{Vector{Vector{Int}}}, total_dynkin_
 end
 
 function decode_bundle_base(bundle_text::AbstractString, position::Int)
-    position <= lastindex(bundle_text) || throw(ArgumentError("unexpected end decoding bundle base"))
+    position <= lastindex(bundle_text) ||
+        throw(ArgumentError("unexpected end decoding bundle base"))
     base_character = bundle_text[position]
     base_value = get(BASE62_INDEX, base_character, -1)
     base_value >= 0 ||
@@ -452,8 +453,11 @@ function canonical_factor_order(
         colors = join((vertex_colors[vertex] for vertex in ordered), "|")
         edges = String[]
         for left_index = 1:length(ordered)
-            for right_index = (left_index + 1):length(ordered)
-                push!(edges, get(edge_labels, (ordered[left_index], ordered[right_index]), "~"))
+            for right_index = (left_index+1):length(ordered)
+                push!(
+                    edges,
+                    get(edge_labels, (ordered[left_index], ordered[right_index]), "~"),
+                )
             end
         end
         return colors * "||" * join(edges, "|")
