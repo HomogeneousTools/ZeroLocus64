@@ -29,6 +29,7 @@ SPEC_EXAMPLES = [
     ("P1 with O + O(1)", [Factor("A", 1, 1)], [[[0]], [[1]]], "1.2021"),
     ("P3", [Factor("A", 3, 1)], [], "30"),
     ("P3 with O(1)", [Factor("A", 3, 1)], [[[1, 0, 0]]], "30.24"),
+    ("P3 with O(-1)", [Factor("A", 3, 1)], [[[-1, 0, 0]]], "30.124"),
     ("P3 split bundle", [Factor("A", 3, 1)], [[[1, 0, 0]], [[0, 0, 1]]], "30.2124"),
     ("Gr(2,4)", [Factor("A", 3, 2)], [], "31"),
     ("Gr(3,6)", [Factor("A", 5, 4)], [], "53"),
@@ -123,7 +124,7 @@ def test_curated_case_names_are_unique(curated_cases: list[dict]) -> None:
         ("0A2H", "escaped rank truncated"),
         ("0A1H", "mask truncated"),
         ("23", "mask out of range"),
-        ("11.1", "bundle base character 1 is reserved"),
+        ("11.111", "bundle base character 1 is reserved"),
         ("11.2", "summand truncated"),
         ("30.21.", "invalid bundle base character"),
     ],
@@ -139,7 +140,7 @@ def test_curated_canonicalization_cases_match_their_expected_labels(
     indexed = {case["name"]: case for case in curated_cases}
     case = indexed["equal_factor_block_global_choice"]
     factors = factors_from_case(case)
-    summands = case["summands"]
+    summands = [list(reversed(row)) for row in case["summands"]]
     assert (
         encode_label(list(reversed(factors)), list(reversed(summands))) == case["label"]
     )
@@ -221,6 +222,23 @@ def test_escaped_base_large_coefficient() -> None:
     assert result["summands"] == canon[1]
 
 
+def test_signed_weight_round_trip() -> None:
+    factors = [Factor("A", 1, 1)]
+    summands = [[[-1]]]
+    label = encode_label(factors, summands)
+    assert label == "1.121"
+    result = decode_label(label)
+    canon = canonicalize(factors, summands)
+    assert result["factors"] == canon[0]
+    assert result["summands"] == canon[1]
+
+
+def test_signed_weights_sort_canonically_across_equal_factors() -> None:
+    factors = [Factor("A", 1, 1), Factor("A", 1, 1)]
+    summands = [[[0], [-1]], [[-1], [0]]]
+    assert encode_label(factors, summands) == "11.121122"
+
+
 # --- Degeneracy locus tests ---
 
 
@@ -236,6 +254,14 @@ DEGENERACY_SPEC_EXAMPLES = [
         [[[1]]],
         0,
         "1.21-21-0",
+    ),
+    (
+        "P1 signed source",
+        [Factor("A", 1, 1)],
+        [[[-1]]],
+        [[[1]]],
+        0,
+        "1.121-21-0",
     ),
     (
         "P1xP1",

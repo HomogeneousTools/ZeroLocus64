@@ -1,9 +1,9 @@
 """
     ZeroLocus62
 
-Reference Julia implementation of the ZeroLocus62 v2 label codec.
+    Reference Julia implementation of the ZeroLocus62 v2.1 label codec.
 
-This module implements the ZeroLocus62 v2 specification using the Base62
+This module implements the ZeroLocus62 v2.1 specification using the Base62
 alphabet `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`.
 """
 module ZeroLocus62
@@ -22,6 +22,7 @@ const BASE62_INDEX =
 const SEP = '.'
 const LOCUS_SEP = '-'
 const ESCAPE = BASE62_CHARS[1]
+const SIGNED_BASE_MARKER = BASE62_CHARS[2]
 const TYPE_ORDER = Set(['A', 'B', 'C', 'D', 'E', 'F', 'G'])
 const TYPE_TABLE = vcat(
     [('A', rank) for rank = 1:15],
@@ -182,10 +183,40 @@ row_base(row) = max(
     maximum((coefficient for weights in row for coefficient in weights); init = 1) + 1,
 )
 
-function row_value(row, base::Int)
-    value = big(0)
+zigzag_encode(value::Int) = value >= 0 ? 2 * value : -2 * value - 1
+zigzag_decode(value::Int) = iseven(value) ? value ÷ 2 : -(value ÷ 2) - 1
+
+function normalize_summands(summands::Vector{Vector{Vector{Int}}}, factors::Vector{Factor})
+    result = Vector{Vector{Vector{Int}}}()
+    for row in summands
+        length(row) == length(factors) ||
+            throw(ArgumentError("summand row factor count mismatch"))
+        typed_row = Vector{Vector{Int}}()
+        for (weights, factor) in zip(row, factors)
+            length(weights) == factor.rank ||
+                throw(ArgumentError("highest-weight length must match the Dynkin rank"))
+            push!(typed_row, copy(weights))
+        end
+        push!(result, typed_row)
+    end
+    return result
+end
+
+function row_digits(row)
+    digits = Int[]
+    signed = false
     for weights in row, coefficient in weights
-        value = value * base + coefficient
+        coefficient < 0 && (signed = true)
+        push!(digits, coefficient)
+    end
+    signed || return false, digits
+    return true, zigzag_encode.(digits)
+end
+
+function row_value(digits::Vector{Int}, base::Int)
+    value = big(0)
+    for digit in digits
+        value = value * base + digit
     end
     return value
 end
@@ -202,14 +233,17 @@ function summand_width(total_dynkin_rank::Int, base::Int)
 end
 
 function encode_summand(row, total_dynkin_rank::Int)
-    base = row_base(row)
+    signed, digits = row_digits(row)
+    base = max(2, maximum(digits; init = 1) + 1)
     width = summand_width(total_dynkin_rank, base)
-    value_chars = encode_characters(row_value(row, base), width)
+    value_chars = encode_characters(row_value(digits, base), width)
+    prefix = signed ? string(SIGNED_BASE_MARKER) : ""
     if base < 62
-        return string(encode_characters(base, 1), value_chars)
+        return string(prefix, encode_characters(base, 1), value_chars)
     end
     base_characters = encode_natural(base)
     return string(
+        prefix,
         ESCAPE,
         encode_characters(length(base_characters), 1),
         base_characters,
@@ -221,6 +255,31 @@ function encode_bundle_text(summands::Vector{Vector{Vector{Int}}}, total_dynkin_
     return join(encode_summand.(summands, Ref(total_dynkin_rank)))
 end
 
+function decode_bundle_base(bundle_text::AbstractString, position::Int)
+    position <= lastindex(bundle_text) || throw(ArgumentError("unexpected end decoding bundle base"))
+    base_character = bundle_text[position]
+    base_value = get(BASE62_INDEX, base_character, -1)
+    base_value >= 0 ||
+        throw(ArgumentError("invalid bundle base character $(repr(base_character))"))
+    if base_value == 0
+        position + 1 <= lastindex(bundle_text) ||
+            throw(ArgumentError("escaped base truncated"))
+        base_len = Int(decode_characters(string(bundle_text[position+1])))
+        base_len > 0 || throw(ArgumentError("escaped base length must be positive"))
+        base_start = position + 2
+        base_stop = base_start + base_len - 1
+        base_stop <= lastindex(bundle_text) ||
+            throw(ArgumentError("escaped base truncated"))
+        base = Int(decode_characters(SubString(bundle_text, base_start, base_stop)))
+        base >= 62 || throw(ArgumentError("escaped base must be at least 62"))
+        return base, base_stop + 1
+    elseif base_value == 1
+        throw(ArgumentError("bundle base character 1 is reserved"))
+    else
+        return base_value, position + 1
+    end
+end
+
 function decode_bundle_text(
     bundle_text::AbstractString,
     factors::Vector{Factor},
@@ -229,32 +288,12 @@ function decode_bundle_text(
     summands = Vector{Vector{Vector{Int}}}()
     position = 1
     while position <= lastindex(bundle_text)
-        base_character = bundle_text[position]
-        base_value = get(BASE62_INDEX, base_character, -1)
-        base_value >= 0 ||
-            throw(ArgumentError("invalid bundle base character $(repr(base_character))"))
-        local base::Int
-        if base_value == 0
-            position + 1 <= lastindex(bundle_text) ||
-                throw(ArgumentError("escaped base truncated"))
-            base_len = Int(decode_characters(string(bundle_text[position+1])))
-            base_len > 0 || throw(ArgumentError("escaped base length must be positive"))
-            base_start = position + 2
-            base_stop = base_start + base_len - 1
-            base_stop <= lastindex(bundle_text) ||
-                throw(ArgumentError("escaped base truncated"))
-            base = Int(decode_characters(SubString(bundle_text, base_start, base_stop)))
-            base >= 62 || throw(ArgumentError("escaped base must be at least 62"))
-            position = base_stop + 1
-        elseif base_value == 1
-            throw(ArgumentError("bundle base character 1 is reserved"))
-        else
-            base = base_value
-            2 <= base < 62 || throw(
-                ArgumentError("invalid bundle base character $(repr(base_character))"),
-            )
+        signed = false
+        if get(BASE62_INDEX, bundle_text[position], -1) == 1
+            signed = true
             position += 1
         end
+        base, position = decode_bundle_base(bundle_text, position)
         width = summand_width(total_dynkin_rank, base)
         start = position
         stop = start + width - 1
@@ -268,6 +307,9 @@ function decode_bundle_text(
             value ÷= base
         end
         value == 0 || throw(ArgumentError("packed value exceeds range"))
+        if signed
+            flat_coefficients = zigzag_decode.(flat_coefficients)
+        end
 
         row = Vector{Vector{Int}}()
         offset = 1
@@ -316,6 +358,73 @@ function reorder(
     [[row[index] for index in order] for row in summands]
 end
 
+function column_profile(
+    index::Int,
+    summands::Vector{Vector{Vector{Int}}},
+    summands_f::Union{Vector{Vector{Vector{Int}}},Nothing},
+)
+    profile = Any[Tuple(row[index]) for row in summands]
+    if summands_f !== nothing
+        push!(profile, :split)
+        append!(profile, Tuple(row[index]) for row in summands_f)
+    end
+    return Tuple(profile)
+end
+
+function visit_unique_block_orders(
+    callback::Function,
+    block_positions::Vector{Int},
+    summands::Vector{Vector{Vector{Int}}},
+    summands_f::Union{Vector{Vector{Vector{Int}}},Nothing},
+)
+    buckets = Dict{Tuple,Vector{Int}}()
+    for index in block_positions
+        profile = column_profile(index, summands, summands_f)
+        push!(get!(()->Int[], buckets, profile), index)
+    end
+    if length(buckets) == length(block_positions)
+        function explore_permutations(working::Vector{Int}, position::Int)
+            if position > length(working)
+                callback(copy(working))
+                return
+            end
+            for swap_index = position:length(working)
+                working[position], working[swap_index] =
+                    working[swap_index], working[position]
+                explore_permutations(working, position + 1)
+                working[position], working[swap_index] =
+                    working[swap_index], working[position]
+            end
+        end
+        explore_permutations(copy(block_positions), 1)
+        return
+    end
+
+    groups = collect(values(buckets))
+    counts = length.(groups)
+    expanded = Tuple{Int,Int}[]
+
+    function explore_multiset(position::Int)
+        if position > length(block_positions)
+            callback([groups[group_index][offset] for (group_index, offset) in expanded])
+            return
+        end
+        for group_index = 1:length(groups)
+            counts[group_index] == 0 && continue
+            counts[group_index] -= 1
+            push!(
+                expanded,
+                (group_index, length(groups[group_index]) - counts[group_index]),
+            )
+            explore_multiset(position + 1)
+            pop!(expanded)
+            counts[group_index] += 1
+        end
+    end
+
+    explore_multiset(1)
+end
+
 """
     canonicalize(factors, summands[, summands_f, k])
 
@@ -331,6 +440,12 @@ function canonicalize(
     k::Union{Int,Nothing} = nothing,
 )
     is_degeneracy = summands_f !== nothing
+    summands = normalize_summands(summands, factors)
+    if is_degeneracy
+        summands_f = normalize_summands(summands_f, factors)
+        k !== nothing || throw(ArgumentError("rank bound must be non-negative"))
+        k >= 0 || throw(ArgumentError("rank bound must be non-negative"))
+    end
     initial_order =
         sort(collect(eachindex(factors)); by = index -> encode_factor(factors[index]))
     factors, summands = reorder(initial_order, factors, summands)
@@ -360,31 +475,18 @@ function canonicalize(
         return Tuple(sort(encode_summand.(rows, Ref(total_dynkin_rank))))
     end
 
+    if all(length(block_positions) == 1 for block_positions in equal_factor_blocks)
+        sort!(summands; by = row -> encode_summand(row, total_dynkin_rank))
+        if is_degeneracy
+            sort!(summands_f; by = row -> encode_summand(row, total_dynkin_rank))
+            return factors, summands, summands_f, k
+        end
+        return factors, summands
+    end
+
     best_signature = nothing
     best_order = collect(eachindex(factors))
     current_order = Int[]
-
-    function explore_block_permutations(
-        block_positions::Vector{Int},
-        position::Int,
-        next_block::Int,
-    )
-        if position > length(block_positions)
-            append!(current_order, block_positions)
-            explore(next_block)
-            for _ = 1:length(block_positions)
-                pop!(current_order)
-            end
-            return
-        end
-        for swap_index = position:length(block_positions)
-            block_positions[position], block_positions[swap_index] =
-                block_positions[swap_index], block_positions[position]
-            explore_block_permutations(block_positions, position + 1, next_block)
-            block_positions[position], block_positions[swap_index] =
-                block_positions[swap_index], block_positions[position]
-        end
-    end
 
     function explore(block_index::Int)
         if block_index > length(equal_factor_blocks)
@@ -409,7 +511,13 @@ function canonicalize(
             end
             return
         end
-        explore_block_permutations(copy(block_positions), 1, block_index + 1)
+        visit_unique_block_orders(block_positions, summands, summands_f) do choice
+            append!(current_order, choice)
+            explore(block_index + 1)
+            for _ = 1:length(choice)
+                pop!(current_order)
+            end
+        end
     end
 
     explore(1)

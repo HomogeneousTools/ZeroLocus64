@@ -1,6 +1,6 @@
-"""ZeroLocus62 v2 canonical label codec for partial-flag zero loci and degeneracy loci.
+"""ZeroLocus62 v2.1 canonical label codec for bundles, zero loci, and degeneracy loci.
 
-This module is the reference Python implementation of the ZeroLocus62 v2
+This module is the reference Python implementation of the ZeroLocus62 v2.1
 specification.
 
 ZeroLocus62 uses the 62-character lexicographic alphabet
@@ -14,7 +14,6 @@ the two bundle parts of a degeneracy locus.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import permutations, product
 
 STANDARD_NAME = "ZeroLocus62"
 BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -189,11 +188,52 @@ def _row_base(row: list[list[int]]) -> int:
     )
 
 
-def _row_value(row: list[list[int]], base: int) -> int:
+def _zigzag_encode(value: int) -> int:
+    return 2 * value if value >= 0 else -2 * value - 1
+
+
+def _zigzag_decode(value: int) -> int:
+    return value // 2 if value % 2 == 0 else -(value // 2) - 1
+
+
+def _normalize_summands(
+    summands: list[list[list[int]]], factors: list[Factor]
+) -> list[list[list[int]]]:
+    if not isinstance(summands, list):
+        raise TypeError("summands must be a list")
+    normalized: list[list[list[int]]] = []
+    for row in summands:
+        if not isinstance(row, list) or len(row) != len(factors):
+            raise ValueError("summand row factor count mismatch")
+        typed_row: list[list[int]] = []
+        for weights, factor in zip(row, factors, strict=True):
+            if not isinstance(weights, list):
+                raise ValueError("highest-weight entry must be a list")
+            if len(weights) != factor.rank:
+                raise ValueError("highest-weight length must match the Dynkin rank")
+            typed_weights: list[int] = []
+            for coefficient in weights:
+                if isinstance(coefficient, bool) or not isinstance(coefficient, int):
+                    raise TypeError("highest-weight coefficient must be an integer")
+                typed_weights.append(coefficient)
+            typed_row.append(typed_weights)
+        normalized.append(typed_row)
+    return normalized
+
+
+def _row_digits(row: list[list[int]]) -> tuple[bool, list[int]]:
+    signed = any(coefficient < 0 for weights in row for coefficient in weights)
+    if signed:
+        return True, [
+            _zigzag_encode(coefficient) for weights in row for coefficient in weights
+        ]
+    return False, [coefficient for weights in row for coefficient in weights]
+
+
+def _row_value(digits: list[int], base: int) -> int:
     value = 0
-    for weights in row:
-        for coefficient in weights:
-            value = value * base + coefficient
+    for digit in digits:
+        value = value * base + digit
     return value
 
 
@@ -211,14 +251,17 @@ def _summand_width(total_dynkin_rank: int, base: int) -> int:
 def _encode_summand(row: list[list[int]], total_dynkin_rank: int) -> str:
     """Encode one bundle summand row."""
 
-    base = _row_base(row)
+    signed, digits = _row_digits(row)
+    base = max(2, max(digits, default=1) + 1)
     width = _summand_width(total_dynkin_rank, base)
-    value_chars = _encode_characters(_row_value(row, base), width)
+    value_chars = _encode_characters(_row_value(digits, base), width)
+    prefix = BASE62[1] if signed else ""
     if base < 62:
-        return _encode_characters(base, 1) + value_chars
+        return prefix + _encode_characters(base, 1) + value_chars
     base_characters = _encode_natural(base)
     return (
-        ESCAPE
+        prefix
+        + ESCAPE
         + _encode_characters(len(base_characters), 1)
         + base_characters
         + value_chars
@@ -227,6 +270,32 @@ def _encode_summand(row: list[list[int]], total_dynkin_rank: int) -> str:
 
 def _encode_bundle_text(summands: list[list[list[int]]], total_dynkin_rank: int) -> str:
     return "".join(_encode_summand(row, total_dynkin_rank) for row in summands)
+
+
+def _decode_bundle_base(bundle_text: str, position: int) -> tuple[int, int]:
+    if position >= len(bundle_text):
+        raise ValueError("unexpected end decoding bundle base")
+    base_character = bundle_text[position]
+    base_value = BASE62_INDEX.get(base_character, -1)
+    if base_value < 0:
+        raise ValueError(f"invalid bundle base character {base_character!r}")
+    if base_value == 0:
+        if position + 2 > len(bundle_text):
+            raise ValueError("escaped base truncated")
+        base_len = _decode_characters(bundle_text[position + 1])
+        if base_len <= 0:
+            raise ValueError("escaped base length must be positive")
+        base_start = position + 2
+        base_end = base_start + base_len
+        if base_end > len(bundle_text):
+            raise ValueError("escaped base truncated")
+        base = _decode_characters(bundle_text[base_start:base_end])
+        if base < 62:
+            raise ValueError("escaped base must be at least 62")
+        return base, base_end
+    if base_value == 1:
+        raise ValueError("bundle base character 1 is reserved")
+    return base_value, position + 1
 
 
 def _decode_bundle_text(
@@ -239,31 +308,11 @@ def _decode_bundle_text(
     summands: list[list[list[int]]] = []
     position = 0
     while position < len(bundle_text):
-        base_character = bundle_text[position]
-        base_value = BASE62_INDEX.get(base_character, -1)
-        if base_value < 0:
-            raise ValueError(f"invalid bundle base character {base_character!r}")
-        if base_value == 0:
-            if position + 2 > len(bundle_text):
-                raise ValueError("escaped base truncated")
-            base_len = _decode_characters(bundle_text[position + 1])
-            if base_len <= 0:
-                raise ValueError("escaped base length must be positive")
-            base_start = position + 2
-            base_end = base_start + base_len
-            if base_end > len(bundle_text):
-                raise ValueError("escaped base truncated")
-            base = _decode_characters(bundle_text[base_start:base_end])
-            if base < 62:
-                raise ValueError("escaped base must be at least 62")
-            position = base_end
-        elif base_value == 1:
-            raise ValueError("bundle base character 1 is reserved")
-        else:
-            base = base_value
-            if not 2 <= base < 62:
-                raise ValueError(f"invalid bundle base character {base_character!r}")
+        signed = False
+        if BASE62_INDEX.get(bundle_text[position], -1) == 1:
+            signed = True
             position += 1
+        base, position = _decode_bundle_base(bundle_text, position)
         width = _summand_width(total_dynkin_rank, base)
         start = position
         end = start + width
@@ -278,6 +327,8 @@ def _decode_bundle_text(
             value //= base
         if value:
             raise ValueError("packed value exceeds range")
+        if signed:
+            flat_coefficients = [_zigzag_decode(coefficient) for coefficient in flat_coefficients]
 
         row: list[list[int]] = []
         offset = 0
@@ -323,6 +374,74 @@ def _reorder(
     ]
 
 
+def _column_profile(
+    index: int,
+    summands: list[list[list[int]]],
+    summands_f: list[list[list[int]]] | None,
+) -> tuple[tuple[object, ...], ...]:
+    profile = [tuple(row[index]) for row in summands]
+    if summands_f is not None:
+        profile.append(("__split__",))
+        profile.extend(tuple(row[index]) for row in summands_f)
+    return tuple(profile)
+
+
+def _iter_unique_block_orders(
+    block: list[int],
+    summands: list[list[list[int]]],
+    summands_f: list[list[list[int]]] | None,
+):
+    buckets: dict[tuple[tuple[int, ...], ...], list[int]] = {}
+    for index in block:
+        buckets.setdefault(_column_profile(index, summands, summands_f), []).append(index)
+    if len(buckets) == len(block):
+        working = list(block)
+
+        def visit(position: int):
+            if position == len(working):
+                yield list(working)
+                return
+            for swap_index in range(position, len(working)):
+                working[position], working[swap_index] = (
+                    working[swap_index],
+                    working[position],
+                )
+                yield from visit(position + 1)
+                working[position], working[swap_index] = (
+                    working[swap_index],
+                    working[position],
+                )
+
+        yield from visit(0)
+        return
+
+    groups = [buckets[key] for key in buckets]
+    counts = [len(group) for group in groups]
+    template = list(range(len(groups)))
+    expanded: list[tuple[int, int]] = []
+
+    def fill(group_index: int) -> int:
+        return len(groups[group_index]) - counts[group_index] - 1
+
+    def visit(position: int):
+        if position == len(block):
+            yield [
+                groups[group_index][offset]
+                for group_index, offset in expanded
+            ]
+            return
+        for group_index in template:
+            if counts[group_index] == 0:
+                continue
+            counts[group_index] -= 1
+            expanded.append((group_index, fill(group_index)))
+            yield from visit(position + 1)
+            expanded.pop()
+            counts[group_index] += 1
+
+    yield from visit(0)
+
+
 def canonicalize(
     factors: list[Factor],
     summands: list[list[list[int]]],
@@ -337,44 +456,71 @@ def canonicalize(
 
     is_degeneracy = summands_f is not None
     factors = list(factors)
-    summands = [list(row) for row in summands]
+    summands = _normalize_summands(summands, factors)
     if is_degeneracy:
-        summands_f = [list(row) for row in summands_f]
+        summands_f = _normalize_summands(summands_f, factors)
+        if k is None or isinstance(k, bool) or not isinstance(k, int):
+            raise TypeError("rank bound must be an integer")
+        if k < 0:
+            raise ValueError("rank bound must be non-negative")
     initial_order = sorted(
         range(len(factors)), key=lambda index: _encode_factor(factors[index])
     )
     factors, summands = _reorder(initial_order, factors, summands)
     if is_degeneracy:
         _, summands_f = _reorder(initial_order, factors, summands_f)
+    if not is_degeneracy and not summands:
+        return factors, summands
     total_dynkin_rank = sum(factor.rank for factor in factors)
     factor_codes = [_encode_factor(factor) for factor in factors]
-    equal_factor_blocks: list[list[tuple[int, ...]]] = []
+    equal_factor_blocks: list[list[int]] = []
     start = 0
     while start < len(factors):
         stop = start + 1
         while stop < len(factors) and factor_codes[stop] == factor_codes[start]:
             stop += 1
-        block = tuple(range(start, stop))
-        equal_factor_blocks.append(
-            [block] if len(block) == 1 else list(permutations(block))
-        )
+        equal_factor_blocks.append(list(range(start, stop)))
         start = stop
 
     def sorted_sig(rows):
         return tuple(sorted(_encode_summand(row, total_dynkin_rank) for row in rows))
 
+    if all(len(block) == 1 for block in equal_factor_blocks):
+        summands.sort(key=lambda row: _encode_summand(row, total_dynkin_rank))
+        if is_degeneracy:
+            summands_f.sort(key=lambda row: _encode_summand(row, total_dynkin_rank))
+            return factors, summands, summands_f, k
+        return factors, summands
+
     best_signature = None
     best_order = list(range(len(factors)))
-    for choice in product(*equal_factor_blocks):
-        trial_order = [index for block in choice for index in block]
-        _, reordered_e = _reorder(trial_order, factors, summands)
-        signature = (sorted_sig(reordered_e),)
-        if is_degeneracy:
-            _, reordered_f = _reorder(trial_order, factors, summands_f)
-            signature = (sorted_sig(reordered_e), sorted_sig(reordered_f))
-        if best_signature is None or signature < best_signature:
-            best_signature = signature
-            best_order = trial_order
+    current_order: list[int] = []
+
+    def explore(block_index: int) -> None:
+        nonlocal best_signature, best_order
+        if block_index == len(equal_factor_blocks):
+            _, reordered_e = _reorder(current_order, factors, summands)
+            signature = (sorted_sig(reordered_e),)
+            if is_degeneracy:
+                _, reordered_f = _reorder(current_order, factors, summands_f)
+                signature = (sorted_sig(reordered_e), sorted_sig(reordered_f))
+            if best_signature is None or signature < best_signature:
+                best_signature = signature
+                best_order = list(current_order)
+            return
+
+        block = equal_factor_blocks[block_index]
+        if len(block) == 1:
+            current_order.extend(block)
+            explore(block_index + 1)
+            current_order.pop()
+            return
+        for choice in _iter_unique_block_orders(block, summands, summands_f):
+            current_order.extend(choice)
+            explore(block_index + 1)
+            del current_order[-len(choice) :]
+
+    explore(0)
     if is_degeneracy:
         _, summands_f = _reorder(best_order, factors, summands_f)
     factors, summands = _reorder(best_order, factors, summands)

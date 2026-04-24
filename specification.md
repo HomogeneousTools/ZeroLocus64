@@ -1,8 +1,8 @@
-# ZeroLocus62 format specification v2.0
+# ZeroLocus62 format specification v2.1
 
 ## Status
 
-This document defines Version 2.0 of the ZeroLocus62 encoding format for zero loci and degeneracy loci of completely reducible vector bundles on partial flag varieties. It is intended to be read as an RFC-like specification for the wire format and canonicalization rules.
+This document defines Version 2.1 of the ZeroLocus62 encoding format for zero loci and degeneracy loci of completely reducible vector bundles on partial flag varieties. It is intended to be read as an RFC-like specification for the wire format and canonicalization rules.
 
 ## 1. Conventions
 
@@ -12,13 +12,15 @@ A character means exactly one element of the Base62 alphabet.
 
 ## 2. Scope
 
-ZeroLocus62 encodes geometric loci on products of partial flag varieties. A label always begins with an ambient part describing the factors of the ambient product. There are three kinds of label:
+ZeroLocus62 encodes bundles and geometric loci on products of partial flag varieties. A label always begins with an ambient part describing the factors of the ambient product. There are three kinds of label:
 
 1. **Ambient only.** The label encodes just the ambient product, with no locus data.
-2. **Zero locus.** The label encodes the ambient product together with a single non-zero completely reducible vector bundle $E$. The geometric object is the zero locus of a general global section of $E$.
+2. **Zero locus / bundle label.** The label encodes the ambient product together with a single non-zero completely reducible vector bundle $E$. It may be read either as a canonical descriptor of the bundle $E$ itself, or, when that interpretation is intended, as the zero locus of a general global section of $E$.
 3. **Degeneracy locus.** The label encodes the ambient product together with two non-zero completely reducible vector bundles $E$ and $F$, plus a non-negative integer rank bound $k$. The geometric object is the $k$-th degeneracy locus of a general morphism $\varphi \colon E \to F$.
 
 The zero-bundle case for a zero locus is represented by the ambient-only form, not by an empty locus part.
+
+The codec does not encode or validate whether a one-bundle label should be interpreted geometrically as a zero locus. In particular, it does not test global generation or any other hypothesis needed for a section-theoretic interpretation. A one-bundle label therefore remains valid as a bundle descriptor even when no zero locus is intended.
 
 The format is canonical. Two inputs representing the same ambient product and locus data up to the permitted reorderings MUST encode to the same label after canonicalization.
 
@@ -40,7 +42,7 @@ When exactly one node is marked, the factor is a generalized Grassmannian. Ordin
 
 Let the ambient be a product of factors `X_1 x ... x X_m`, where factor `X_i` has Dynkin rank `r_i`. One direct summand contributes one highest-weight coefficient vector
 
-$\lambda^{(i)} \in \mathbf{Z}_{\ge 0}^{r_i}$
+$\lambda^{(i)} \in \mathbf{Z}^{r_i}$
 
 for each factor `X_i`.
 
@@ -48,11 +50,13 @@ To represent one summand as a flat array, ZeroLocus62 concatenates these $m$ coe
 
 $$d = (\lambda^{(1)}_1, \ldots, \lambda^{(1)}_{r_1},\ \lambda^{(2)}_1, \ldots, \lambda^{(2)}_{r_2},\ \ldots,\ \lambda^{(m)}_1, \ldots, \lambda^{(m)}_{r_m}).$$
 
-The result is a single sequence of non-negative integers of total length $W = \sum_i r_i$, called the summand row. All arithmetic for encoding that summand — choosing the base, packing the value — operates on this flat sequence.
+The result is a single sequence of integers of total length $W = \sum_i r_i$, called the summand row. All arithmetic for encoding that summand — choosing the base, packing the value — operates on this flat sequence. Rows with only non-negative coefficients use the unsigned bundle-row form of §8.1; rows with at least one negative coefficient use the signed bundle-row form of §8.1.
 
 An encoder MUST reject any summand whose structure does not match the ambient: each summand row MUST contain exactly one weight vector per ambient factor, and each weight vector MUST have length equal to that factor's Dynkin rank.
 
 Example: on $\mathbb{P}^1 \times \mathbb{P}^1$ (two factors of type $\mathrm{A}_1$, each of rank 1, so $W = 2$), the summand $\mathcal{O}(1, 0)$ has coefficient vectors $(1)$ and $(0)$, which flatten to the row $(1, 0)$.
+
+This format treats such rows purely as bundle data. No positivity, dominance on marked nodes, or global-generation condition is required by the codec beyond the structural checks stated here and in §10.
 
 ### 3.3 Degeneracy locus data
 
@@ -89,6 +93,8 @@ The character `-` is reserved as the intra-locus separator for degeneracy loci a
 The 62 alphanumeric characters are all safe in URLs and filenames without percent-encoding. Future versions of this format MAY assign meaning to additional URL-safe non-alphanumeric characters (such as `_` or `~`) to encode further information; any such extension requires a new format version. This format does not include an in-band version identifier. Forward-compatible evolution therefore requires that any new syntax is reliably rejected by v2.0 decoders.
 
 Because `-` is not a member of the Base62 alphabet, labels containing `-` are reliably rejected by v1.1 decoders.
+
+Version 2.1 additionally assigns meaning to the previously reserved bundle-row lead character `1`: when it appears at the start of one encoded summand row, it marks the signed-row form defined in §8.1. This syntax is reliably rejected by v2.0 decoders because they rejected `1` as a bundle base character.
 
 Every label has exactly one of the following schematic forms:
 
@@ -153,7 +159,16 @@ There is no exhaustive search across distinct ambient factors. Only equal-factor
 
 ### 6.3 Complexity
 
-The brute-force enumeration considers $\prod_i |B_i|!$ permutation combinations, where $B_i$ ranges over the equal-factor blocks. For a single block of $k$ identical factors, the cost is $k!$. Implementations MAY use any strategy to manage this cost, such as early termination or heuristic pruning, provided the result agrees with the brute-force procedure.
+The reference brute-force enumeration considers $\prod_i |B_i|!$ permutation combinations, where $B_i$ ranges over the equal-factor blocks. For a single block of $k$ identical factors, the worst-case cost is $k!$.
+
+This factorial blow-up is real when a large equal-factor block contains many distinguishable positions. Implementations therefore SHOULD exploit exact optimizations before or instead of naive enumeration. Examples include:
+
+- trivial short-circuits (ambient-only labels, bundles with no equal-factor blocks, empty zero-locus summand lists);
+- collapsing positions inside one equal-factor block that have identical coefficient profiles across all rows of $E$ and $F$;
+- lazy permutation generation rather than eager materialization;
+- lexicographic prefix pruning or other refinement algorithms that discard candidates once their partial key is already worse than the best candidate seen so far.
+
+Any optimization is permitted only if it produces exactly the same canonical label as the brute-force definition above.
 
 ### 6.4 Ordering convention
 
@@ -266,10 +281,14 @@ d_0, d_1, ..., d_{W-1}
 
 where `W` is the total ambient Dynkin rank.
 
-Define the base
+Version 2.1 has two row forms.
+
+#### 8.1.1 Unsigned row form
+
+If every coefficient satisfies `d_j >= 0`, define
 
 $$
-B = \max(2, 1 + \max_j d_j)
+B = \max(2, 1 + \max_j d_j).
 $$
 
 The lower bound of 2 ensures that base-$B$ representation remains non-degenerate: in base 1, every integer maps to 0 regardless of its value, making the coefficient vector unrecoverable.
@@ -282,15 +301,43 @@ $$
 
 Equivalently, start with `v = 0` and update `v <- v B + d_j` from left to right.
 
-Each summand row chooses its own base `B`.
+#### 8.1.2 Signed row form
 
-The summand row encoding is
+If at least one coefficient is negative, first transform each coefficient to a non-negative digit by the ZigZag bijection
 
-```text
-base_character + value_characters
-```
+$$
+e_j =
+\begin{cases}
+2d_j & \text{if } d_j \ge 0, \\
+-2d_j - 1 & \text{if } d_j < 0.
+\end{cases}
+$$
 
-where `base_character` is the single ZeroLocus62 character for `B`, and `value_characters` is the fixed-width encoding of `v` using the smallest `k >= 1` such that
+The inverse map is
+
+$$
+d_j =
+\begin{cases}
+e_j / 2 & \text{if } e_j \text{ is even}, \\
+-(e_j + 1) / 2 & \text{if } e_j \text{ is odd}.
+\end{cases}
+$$
+
+Now define
+
+$$
+B = \max(2, 1 + \max_j e_j)
+$$
+
+and pack the transformed digits:
+
+$$
+v = \sum_{j=0}^{W-1} e_j B^{W-1-j}.
+$$
+
+#### 8.1.3 Base descriptor and final row encoding
+
+Each summand row chooses its own base `B`. In either row form, `value_characters` is the fixed-width encoding of `v` using the smallest `k >= 1` such that
 
 $$
 62^k \ge B^W.
@@ -302,20 +349,27 @@ $$
 0 \le v < B^W.
 $$
 
-When `B` is in the range `2..61`, the base character encodes `B` directly as a single character. Character values `0` and `1` (representing integers 0 and 1) MUST NOT appear as a standard base character.
+Define the **base descriptor** as follows:
 
-When `B >= 62`, the summand row uses an escaped base encoding:
+- if `B` is in the range `2..61`, the descriptor is the single ZeroLocus62 character for `B`; character values `0` and `1` MUST NOT appear as a direct base descriptor;
+- if `B >= 62`, the descriptor is
 
-```text
-0 <base_len> <base_characters> <value_characters>
-```
+  ```text
+  0 <base_len> <base_characters>
+  ```
 
-where:
+  where:
 
-- `0` is the escape character (Base62 value 0);
-- `<base_characters>` is the shortest non-empty character string representing `B`;
-- `<base_len>` is one character giving the number of characters used by `<base_characters>`;
-- `<value_characters>` has the same width as above.
+  - `0` is the escape character (Base62 value 0);
+  - `<base_characters>` is the shortest non-empty character string representing `B`;
+  - `<base_len>` is one character giving the number of characters used by `<base_characters>`.
+
+The final row encoding is then:
+
+- **unsigned row:** `<base_descriptor> <value_characters>`;
+- **signed row:** `1 <base_descriptor> <value_characters>`.
+
+The leading `1` in the signed form is the signed-row marker. It is not part of the base descriptor; the descriptor that follows it still obeys the same `2..61` / escaped-`0` rules as above.
 
 Because `<base_len>` is a single character, the base value can occupy at most 61 characters. Therefore an escaped base is encodable only when the shortest representation of `B` uses at most 61 characters, equivalently when `B \le 62^{61} - 1`. An encoder MUST reject any summand row outside that bound. This is a hard format limit.
 
@@ -333,7 +387,7 @@ $$
 s_{(1)} \cdots s_{(t)}.
 $$
 
-The number of summands is not written explicitly. Decoding remains unambiguous because the ambient part determines `W`, and each summand begins with a base character (or escape sequence) that determines the width of its remaining value field.
+The number of summands is not written explicitly. Decoding remains unambiguous because the ambient part determines `W`, and each summand begins with either an optional signed-row marker followed by a base descriptor, or directly with a base descriptor; that descriptor determines the width of its remaining value field.
 
 ### 8.3 Rank bound encoding
 
@@ -368,17 +422,15 @@ To decode a label:
    - if 0, proceed to step 6 (zero-locus path);
    - if 2, proceed to step 13 (degeneracy-locus path);
    - otherwise, reject the label;
-6. **(zero locus)** read one base character;
-7. if the character has Base62 value 0, decode the escaped base:
-   - read one character for `base_len`;
-   - validate that `base_len` is positive;
-   - read `base_len` characters and decode as `B`;
-   - validate that `B >= 62`;
-8. otherwise, decode the character as `B` and validate `2 <= B <= 61`;
+6. **(zero locus)** read one character from the bundle text;
+7. if that character has Base62 value `1`, set `signed = true` and read the next character as the start of the base descriptor; otherwise set `signed = false` and treat the character already read as the start of the base descriptor;
+8. decode the base descriptor:
+   - if its first character has Base62 value `0`, read one character for `base_len`, validate that `base_len` is positive, then read `base_len` characters and decode them as `B`; validate that `B >= 62`;
+   - otherwise decode the character directly as `B` and validate `2 <= B <= 61`;
 9. determine the width of the value field from `B` and `W`;
 10. decode the packed integer `v`;
-11. unpack `v` into `W` coefficients in base `B`; validate that no remainder remains after the `W` coefficients are extracted, equivalently that `0 <= v < B^W`;
-12. split those coefficients by ambient-factor ranks to recover one bundle summand row; repeat from step 6 until the locus text is exhausted;
+11. unpack `v` into `W` base-`B` digits; validate that no remainder remains after the `W` digits are extracted, equivalently that `0 <= v < B^W`;
+12. if `signed = true`, apply the inverse ZigZag map of §8.1.2 to those digits to recover the original coefficients; then split the resulting coefficient sequence by ambient-factor ranks to recover one bundle summand row; repeat from step 6 until the locus text is exhausted;
 13. **(degeneracy locus)** split the locus part at the two `-` characters to obtain `E_text`, `F_text`, and `k_text`;
 14. validate that all three segments are non-empty;
 15. decode `E_text` as a bundle (steps 6–12 applied to `E_text`), yielding the summands of $E$;
@@ -402,8 +454,8 @@ An implementation MUST reject at least the following malformed conditions:
 - truncated escaped rank characters;
 - truncated mask characters;
 - a decoded mask outside the valid range `1 <= mask < 2^rank`;
-- a standard (non-escaped) bundle base character outside the range `2..61`;
-- a bundle base character with Base62 value 1 (reserved);
+- a direct bundle base descriptor outside the range `2..61`;
+- a signed-row marker not followed by a valid base descriptor;
 - an escaped bundle base with a non-positive base length;
 - an escaped bundle base whose shortest representation would require more than 61 characters;
 - truncated escaped base characters;
@@ -425,10 +477,12 @@ An implementation MUST reject at least the following malformed conditions:
 | ----------------------------------------------------------------------- | ------------------------------------------ | ---------- |
 | $\mathbb{P}^1 = \mathrm{A}_1 / \mathrm{P}_1$                            | ambient only                               | `1`        |
 | $\mathbb{P}^1$                                                          | $\mathcal{O}(1)$                           | `1.21`     |
+| $\mathbb{P}^1$                                                          | $\mathcal{O}(-1)$                          | `1.121`    |
 | $\mathbb{P}^1$                                                          | $\mathcal{O} \oplus \mathcal{O}(1)$        | `1.2021`   |
 | $\mathbb{P}^1$                                                          | $\mathcal{O}(1) \oplus \mathcal{O}(1)$     | `1.2121`   |
 | $\mathbb{P}^3 = \mathrm{A}_3 / \mathrm{P}_1$                            | ambient only                               | `30`       |
 | $\mathbb{P}^3$                                                          | $\mathcal{O}(1)$                           | `30.24`    |
+| $\mathbb{P}^3$                                                          | $\mathcal{O}(-1)$                          | `30.124`   |
 | $\mathbb{P}^3$                                                          | $\mathcal{O}(1) \oplus \mathcal{O}(0,0,1)$ | `30.2124`  |
 | $\mathrm{Gr}(2,4) = \mathrm{A}_3 / \mathrm{P}_2$                        | ambient only                               | `31`       |
 | $\mathrm{Gr}(2,4)$                                                      | weight $(1,0,0)$                           | `31.24`    |
@@ -457,6 +511,7 @@ For `P^1 x P^1`, the bundle `O(1,0) \oplus O(0,1)` has row encodings `22` and `2
 | Object                             | $E$                                    | $F$                | $k$ | Label          |
 | ---------------------------------- | -------------------------------------- | ------------------ | --- | -------------- |
 | $\mathbb{P}^1$                     | $\mathcal{O}(1)$                       | $\mathcal{O}(1)$   | 0   | `1.21-21-0`    |
+| $\mathbb{P}^1$                     | $\mathcal{O}(-1)$                      | $\mathcal{O}(1)$   | 0   | `1.121-21-0`   |
 | $\mathbb{P}^1 \times \mathbb{P}^1$ | $\mathcal{O}(1,0)$                     | $\mathcal{O}(0,1)$ | 0   | `11.21-22-0`   |
 | $\mathbb{P}^3$                     | $\mathcal{O}(1) \oplus \mathcal{O}(1)$ | $\mathcal{O}(2)$   | 1   | `30.2424-3I-1` |
 
@@ -471,4 +526,5 @@ For `P^1 x P^1`, the bundle `O(1,0) \oplus O(0,1)` has row encodings `22` and `2
 
 - **v1** — Initial encoding for zero loci of completely reducible vector bundles on partial flag varieties.
 - **v1.1** — Switched the character alphabet to Base62 (`0–9A–Za–z`), giving a fixed 62-character encoding with lexicographic ordering by encoded string. Because `-` is not a Base62 character, v1.1 labels are reliably rejected by hypothetical v1 decoders and vice versa.
-- **v2** — Extended the format to encode degeneracy loci. A label may now specify two bundles $E$ and $F$ and a non-negative integer rank bound $k$, using `-` as an intra-locus separator (`<ambient>.<bundle_E>-<bundle_F>-<k>`). Labels containing `-` are reliably rejected by v1.1 decoders. The ambient-only and zero-locus forms are unchanged from v1.1.
+- **v2.0** — Extended the format to encode degeneracy loci. A label may now specify two bundles $E$ and $F$ and a non-negative integer rank bound $k$, using `-` as an intra-locus separator (`<ambient>.<bundle_E>-<bundle_F>-<k>`). Labels containing `-` are reliably rejected by v1.1 decoders. The ambient-only and zero-locus forms are unchanged from v1.1.
+- **v2.1** — Added signed bundle coefficients. A summand row with at least one negative coefficient is encoded with the signed-row marker `1` followed by the usual base descriptor and packed ZigZag-transformed digits. Because v2.0 decoders rejected `1` as a bundle base character, signed-row labels are reliably rejected by v2.0 decoders.

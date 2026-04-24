@@ -47,13 +47,17 @@ export function formatFundamentalWeightExpression(weights) {
     if (coefficient === 0) {
       return;
     }
-    terms.push(
-      coefficient === 1
-        ? `omega${index + 1}`
-        : `${coefficient} omega${index + 1}`,
-    );
+    const abs = Math.abs(coefficient);
+    const body = abs === 1 ? `omega${index + 1}` : `${abs} omega${index + 1}`;
+    terms.push(coefficient < 0 ? `-${body}` : body);
   });
-  return terms.length === 0 ? "0" : terms.join(" + ");
+  if (terms.length === 0) {
+    return "0";
+  }
+  return terms
+    .map((term, index) => (index === 0 || !term.startsWith("-") ? term : `- ${term.slice(1)}`))
+    .join(" + ")
+    .replaceAll("+ - ", "- ");
 }
 
 export function formatFundamentalWeightLatex(weights) {
@@ -62,13 +66,17 @@ export function formatFundamentalWeightLatex(weights) {
     if (coefficient === 0) {
       return;
     }
-    terms.push(
-      coefficient === 1
-        ? `\\omega_{${index + 1}}`
-        : `${coefficient}\\omega_{${index + 1}}`,
-    );
+    const abs = Math.abs(coefficient);
+    const body = abs === 1 ? `\\omega_{${index + 1}}` : `${abs}\\omega_{${index + 1}}`;
+    terms.push(coefficient < 0 ? `-${body}` : body);
   });
-  return terms.length === 0 ? "0" : terms.join(" + ");
+  if (terms.length === 0) {
+    return "0";
+  }
+  return terms
+    .map((term, index) => (index === 0 || !term.startsWith("-") ? term : `- ${term.slice(1)}`))
+    .join(" + ")
+    .replaceAll("+ - ", "- ");
 }
 
 export function factorNotation(factor) {

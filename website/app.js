@@ -19,6 +19,7 @@ import {
 const EXAMPLES = [
   { label: "1", caption: "P^1 ambient" },
   { label: "30.24", caption: "A3 / P1 with O(1)" },
+  { label: "1.121", caption: "P^1 with O(-1)" },
   { label: "H0.24", caption: "B3 / P1 with weight (1,0,0)" },
   { label: "11.2122", caption: "split bundle on P^1 x P^1" },
   { label: "11111.2V", caption: "(P^1)^5 diagonal" },
@@ -434,7 +435,7 @@ function renderDetails(details) {
   bundlePanel.hidden = !hasBundle;
 
   const bundleHeading = bundlePanel.querySelector(".panel-heading .eyebrow");
-  bundleHeading.textContent = isDegeneracy ? "Degeneracy Locus" : "Bundle Data";
+  bundleHeading.textContent = isDegeneracy ? "Degeneracy Locus" : "Bundle";
 
   if (isDegeneracy) {
     const summandGeometryF = details.summandsF.map((row) => {
@@ -499,12 +500,9 @@ function renderDetails(details) {
 
     canonicalSummary.innerHTML = "";
   } else if (hasBundle) {
-    const expectedCodimension = (
-      BigInt(geometry.ambientDimension) - geometry.totalRank
-    ).toString();
     bundleSummary.innerHTML = [
       renderBundleStatRow(
-        "E",
+        "Bundle",
         `<span class="bundle-description">${escapeHtml(renderBundleDescription(details)).replaceAll("&amp;oplus;", "&oplus;")}</span>`,
       ),
       renderBundleStatRow(
@@ -512,19 +510,15 @@ function renderDetails(details) {
         escapeHtml(String(details.summands.length)),
       ),
       renderBundleStatRow("Total rank", escapeHtml(String(geometry.totalRank))),
-      renderBundleStatRow(
-        "Expected codimension",
-        escapeHtml(expectedCodimension),
-      ),
     ].join("");
-
-    renderCanonicalSummary(details, geometry);
 
     summandCards.innerHTML = details.summandDetails
       .map((detail, index) =>
         renderSummandCard(detail, geometry.summandGeometry[index]),
       )
       .join("");
+
+    canonicalSummary.innerHTML = "";
   } else {
     bundleSummary.innerHTML = "";
     canonicalSummary.innerHTML = "";
@@ -554,7 +548,7 @@ function decodeCurrentLabel({ updateUrl = true, announce = true } = {}) {
           ? "Decoded degeneracy locus."
           : details.summands.length === 0
             ? "Decoded ambient only."
-            : "Decoded successfully.";
+            : "Decoded bundle data.";
       setStatus(successMessage, "success");
     }
   } catch (error) {

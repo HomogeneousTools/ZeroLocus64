@@ -1,6 +1,6 @@
 # ZeroLocus62.jl
 
-This directory contains the Julia reference implementation of the ZeroLocus62 v2 format.
+This directory contains the Julia reference implementation of the ZeroLocus62 v2.1 format.
 
 The repository-level overview is in [../README.md](../README.md), and the canonical format specification is in [../specification.md](../specification.md).
 
@@ -27,5 +27,7 @@ using ZeroLocus62
 
 label = encode_label([Factor('A', 1, 1)], [[[1]]])
 @assert label == "1.21"
-@assert decode_label(label) == ([Factor('A', 1, 1)], [[[1]]])
+@assert decode_label(label).summands == [[[1]]]
 ```
+
+One-bundle labels are also canonical descriptions of bundles on partial flag varieties themselves, even when they are not globally generated, so signed rows such as `encode_label([Factor('A', 1, 1)], [[[-1]]]) == "1.121"` are valid.

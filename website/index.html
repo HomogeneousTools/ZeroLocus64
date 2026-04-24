@@ -62,15 +62,17 @@
           <p class="eyebrow">Decoder</p>
           <h1>Decode a ZeroLocus62 label</h1>
           <p class="hero-text">
-            ZeroLocus62 is a compact format for zero loci and degeneracy loci of
-            completely reducible bundles on partial flag varieties. Each label
-            has an ambient part and, after the separator
-            <code>.</code>, an optional bundle part. Degeneracy loci use
+            ZeroLocus62 is a compact format for ambient products, bundles, zero
+            loci, and degeneracy loci of completely reducible bundles on partial
+            flag varieties. Each label has an ambient part and, after the
+            separator <code>.</code>, optional bundle data. Degeneracy loci use
             <code>-</code> to separate the two bundles and rank bound.
           </p>
           <p class="hero-text">
-            For the full description of the encoding format, check the
-            <a href="specification">specification</a>.
+            A one-bundle label is also a canonical description of the bundle
+            itself, even when the bundle is not globally generated and no
+            zero-locus interpretation is intended. For the full description of
+            the encoding format, check the <a href="specification">specification</a>.
           </p>
 
           <div class="example-strip">
@@ -103,7 +105,7 @@
             aria-live="polite"
           >
             Enter a label to decode the ambient product before
-            <code>.</code> and the bundle after it.
+            <code>.</code> and the bundle or degeneracy data after it.
           </div>
         </div>
       </section>

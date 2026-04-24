@@ -76,6 +76,7 @@ end
         ("1.2021", [Factor('A', 1, 1)], [[[0]], [[1]]]),
         ("30", [Factor('A', 3, 1)], Vector{Vector{Vector{Int}}}()),
         ("30.24", [Factor('A', 3, 1)], [[[1, 0, 0]]]),
+        ("30.124", [Factor('A', 3, 1)], [[[-1, 0, 0]]]),
         ("30.2124", [Factor('A', 3, 1)], [[[1, 0, 0]], [[0, 0, 1]]]),
         ("31", [Factor('A', 3, 2)], Vector{Vector{Vector{Int}}}()),
         ("53", [Factor('A', 5, 4)], Vector{Vector{Vector{Int}}}()),
@@ -129,7 +130,7 @@ end
     indexed = Dict(String(case["name"]) => case for case in CURATED_CASES)
     canonical_case = indexed["equal_factor_block_global_choice"]
     factors = factors_from_case(canonical_case)
-    summands = summands_from_case(canonical_case)
+    summands = [reverse(row) for row in summands_from_case(canonical_case)]
     @test encode_label(reverse(factors), reverse(summands)) == canonical_case["label"]
 end
 
@@ -191,7 +192,7 @@ end
     assert_decode_error("0A2H", "escaped rank truncated")
     assert_decode_error("0A1H", "mask truncated")
     assert_decode_error("23", "mask out of range")
-    assert_decode_error("11.1", "bundle base character 1 is reserved")
+    assert_decode_error("11.111", "bundle base character 1 is reserved")
     assert_decode_error("11.2", "summand truncated")
     assert_decode_error("30.21.", "invalid bundle base character")
 end
@@ -239,6 +240,12 @@ end
     @test result.factors == [Factor('A', 1, 1)]
     @test result.summands == [[[42]]]
 
+    signed_label = encode_label([Factor('A', 1, 1)], [[[-1]]])
+    @test signed_label == "1.121"
+    signed_result = decode_label(signed_label)
+    @test signed_result.factors == [Factor('A', 1, 1)]
+    @test signed_result.summands == [[[-1]]]
+
     factors = [Factor('A', 1, 1), Factor('A', 1, 1)]
     summands = [[[1], [0]], [[5], [0]], [[12], [0]]]
     label2 = encode_label(factors, summands)
@@ -246,11 +253,17 @@ end
     canon = canonicalize(factors, summands)
     @test result2.factors == canon[1]
     @test result2.summands == canon[2]
+    @test encode_label(factors, [[[0], [-1]], [[-1], [0]]]) == "11.121122"
 
     for l in ["H0.24", "iF", "u11", "0A1H000", "0B1H000"]
         result = decode_label(l)
         @test length(result.factors) > 0
     end
+
+    assert_argument_error(
+        () -> encode_label([Factor('A', 2, 1)], [[[1]]]),
+        "highest-weight length must match the Dynkin rank",
+    )
 end
 
 @testset "Escaped Base Encoding" begin
@@ -299,6 +312,7 @@ end
     # Spec examples
     spec_cases = [
         ("P1 id", [Factor('A', 1, 1)], [[[1]]], [[[1]]], 0, "1.21-21-0"),
+        ("P1 signed source", [Factor('A', 1, 1)], [[[-1]]], [[[1]]], 0, "1.121-21-0"),
         (
             "P1xP1",
             [Factor('A', 1, 1), Factor('A', 1, 1)],

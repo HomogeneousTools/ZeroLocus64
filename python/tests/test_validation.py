@@ -17,6 +17,14 @@ def test_high_coefficients_choose_larger_bases() -> None:
     assert result["summands"] == [[[42]]]
 
 
+def test_negative_coefficients_use_signed_rows() -> None:
+    label = encode_label([Factor("A", 1, 1)], [[[-1]]])
+    assert label == "1.121"
+    result = decode_label(label)
+    assert result["factors"] == [Factor("A", 1, 1)]
+    assert result["summands"] == [[[-1]]]
+
+
 def test_multiple_summands_may_use_different_bases() -> None:
     factors = [Factor("A", 1, 1), Factor("A", 1, 1)]
     summands = [[[1], [0]], [[5], [0]], [[12], [0]]]
@@ -30,6 +38,11 @@ def test_multiple_summands_may_use_different_bases() -> None:
 def test_invalid_dynkin_type_rank_pairs_are_rejected_on_encode() -> None:
     with pytest.raises(ValueError, match="invalid Dynkin type/rank pair"):
         encode_label([Factor("G", 7, 64)], [])
+
+
+def test_weight_vectors_must_match_dynkin_rank() -> None:
+    with pytest.raises(ValueError, match="highest-weight length"):
+        encode_label([Factor("A", 2, 1)], [[[1]]])
 
 
 @pytest.mark.parametrize(

@@ -4,9 +4,9 @@
 [![Docs](https://img.shields.io/badge/docs-zl62.homogeneous.tools-blue)](https://zl62.homogeneous.tools)
 [![Release](https://img.shields.io/github/v/release/HomogeneousTools/ZeroLocus62?color=green)](https://github.com/HomogeneousTools/ZeroLocus62/releases)
 
-ZeroLocus62 is a compact, canonical encoding for zero loci and degeneracy loci of completely reducible vector bundles on partial flag varieties. This repository contains the v2 format specification together with independent Python, Julia, and JavaScript reference implementations, plus a small browser-based decoder website.
+ZeroLocus62 is a compact, canonical encoding for bundles, zero loci, and degeneracy loci of completely reducible vector bundles on partial flag varieties. A label with one bundle part can always be read as a canonical description of the underlying bundle itself, even when no zero-locus interpretation is intended or the bundle is not globally generated. This repository contains the v2.1 format specification together with independent Python, Julia, JavaScript, and Macaulay2 reference implementations, plus a small browser-based decoder website.
 
-The canonical format definition is [specification.md](specification.md). Treat that document as the source of truth for the v2 wire format, canonicalization rules, and worked examples.
+The canonical format definition is [specification.md](specification.md). Treat that document as the source of truth for the v2.1 wire format, canonicalization rules, and worked examples.
 
 ## Repository layout
 
@@ -15,24 +15,26 @@ The canonical format definition is [specification.md](specification.md). Treat t
 - [python](python): Python package and pytest suite.
 - [julia](julia): Julia module and Julia test suite.
 - [javascript](javascript): JavaScript package, Node test suite, and website build or preview scripts.
+- [macaulay2](macaulay2): Macaulay2 package implementation and package self-tests.
 - [website](website): static two-page site for browsing the specification and decoding labels.
 
 ## Reference API
 
-The reference implementations of the v2 format are:
+The reference implementations of the v2.1 format are:
 
 - [python/src/zerolocus62/](python/src/zerolocus62/)
 - [julia/src/](julia/src/)
 - [javascript/src/](javascript/src/)
+- [macaulay2/ZeroLocus62.m2](macaulay2/ZeroLocus62.m2)
 
-All three implementations expose the same conceptual operations:
+The Python, Julia, and JavaScript implementations expose the same conceptual operations:
 
 - `canonicalize(factors, summands)`
 - `encode_label(factors, summands)`
 - `decode_label(label)`
 - `is_canonical(label)`
 
-All three also expose a `Factor` type representing one irreducible Dynkin factor. Tracked regression examples live in [examples.json](examples.json).
+The Macaulay2 package exposes the analogous operations as `canonicalize`, `encodeLabel`, `decodeLabel`, `isCanonical`, plus `Factor` and `markedNodes`. Tracked regression examples live in [examples.json](examples.json).
 
 ## Python
 
@@ -55,7 +57,7 @@ from zerolocus62 import Factor, decode_label, encode_label
 
 label = encode_label([Factor("A", 1, 1)], [[[1]]])
 assert label == "1.21"
-assert decode_label(label) == ([Factor("A", 1, 1)], [[[1]]])
+assert decode_label(label)["summands"] == [[[1]]]
 ```
 
 ## Julia
@@ -73,7 +75,7 @@ using ZeroLocus62
 
 label = encode_label([Factor('A', 1, 1)], [[[1]]])
 @assert label == "1.21"
-@assert decode_label(label) == ([Factor('A', 1, 1)], [[[1]]])
+@assert decode_label(label).summands == [[[1]]]
 ```
 
 ## JavaScript
@@ -98,9 +100,23 @@ import { Factor, decodeLabel, encodeLabel } from "zerolocus62";
 const label = encodeLabel([new Factor("A", 1, 1)], [[[1]]]);
 console.assert(label === "1.21");
 
-const [factors, summands] = decodeLabel(label);
-console.assert(factors[0].group === "A");
-console.assert(summands[0][0][0] === 1);
+const result = decodeLabel(label);
+console.assert(result.factors[0].group === "A");
+console.assert(result.summands[0][0][0] === 1);
+```
+
+## Macaulay2
+
+Load the local Macaulay2 package from the repository root:
+
+```text
+M2 -q -e 'path = prepend("macaulay2", path); loadPackage "ZeroLocus62"; print encodeLabel({Factor("A",1,1)}, {{{1}}}); exit 0'
+```
+
+Run the Macaulay2 package checks:
+
+```text
+M2 -q -e 'path = prepend("macaulay2", path); loadPackage "ZeroLocus62"; check ZeroLocus62; exit 0'
 ```
 
 ## Website
@@ -125,4 +141,5 @@ Deployment to GitHub Pages is handled by [.github/workflows/pages.yml](.github/w
 
 - **v1** — Initial encoding for zero loci of completely reducible vector bundles on partial flag varieties.
 - **v1.1** — Switched the character alphabet to Base62 (`0–9A–Za–z`), enabling lexicographic ordering by encoded string.
-- **v2** — Extended the format to encode degeneracy loci: a label may now encode two bundles and a rank bound in addition to a zero locus or ambient-only label.
+- **v2.0** — Extended the format to encode degeneracy loci: a label may now encode two bundles and a rank bound in addition to a zero locus or ambient-only label.
+- **v2.1** — Added signed bundle coefficients and made the bundle-only interpretation explicit: one-bundle labels canonically describe bundles on partial flag varieties even when they are not globally generated.

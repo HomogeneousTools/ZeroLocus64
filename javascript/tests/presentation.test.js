@@ -45,6 +45,10 @@ test("fundamental weight expressions stay readable", () => {
     formatFundamentalWeightExpression([1, 0, 2]),
     "omega1 + 2 omega3",
   );
+  assert.equal(
+    formatFundamentalWeightExpression([-1, 0, 2]),
+    "-omega1 + 2 omega3",
+  );
 });
 
 test("detailed decode provides ambient summaries", () => {

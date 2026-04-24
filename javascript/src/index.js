@@ -4,6 +4,7 @@ export const BASE62 =
 export const SEP = ".";
 export const LOCUS_SEP = "-";
 export const ESCAPE = BASE62[0];
+export const SIGNED_BASE_MARKER = BASE62[1];
 export const TYPE_ORDER = "ABCDEFG";
 
 export const TYPE_TABLE = Object.freeze([
@@ -71,6 +72,14 @@ function toNonNegativeSafeInteger(value, name) {
   return integer;
 }
 
+function zigZagEncode(value) {
+  return value >= 0 ? 2 * value : -2 * value - 1;
+}
+
+function zigZagDecode(value) {
+  return value % 2 === 0 ? value / 2 : -Math.floor(value / 2) - 1;
+}
+
 function coerceFactor(factor) {
   if (factor instanceof Factor) {
     return factor;
@@ -89,12 +98,15 @@ function normalizeSummands(summands, factors) {
     if (!Array.isArray(row) || row.length !== factors.length) {
       throw new RangeError("summand row factor count mismatch");
     }
-    return row.map((weights) => {
+    return row.map((weights, index) => {
       if (!Array.isArray(weights)) {
         throw new RangeError("highest-weight entry must be an array");
       }
+      if (weights.length !== factors[index].rank) {
+        throw new RangeError("highest-weight length must match the Dynkin rank");
+      }
       return weights.map((coefficient) =>
-        toNonNegativeSafeInteger(coefficient, "highest-weight coefficient"),
+        toSafeInteger(coefficient, "highest-weight coefficient"),
       );
     });
   });
@@ -309,24 +321,27 @@ function decodeFactor(text, position) {
   return [new Factor(group, rank, mask), end];
 }
 
-function rowBase(row) {
-  let maxCoefficient = 1;
+function rowDigits(row) {
+  const digits = [];
+  let signed = false;
   for (const weights of row) {
     for (const coefficient of weights) {
-      if (coefficient > maxCoefficient) {
-        maxCoefficient = coefficient;
+      if (coefficient < 0) {
+        signed = true;
       }
+      digits.push(coefficient);
     }
   }
-  return Math.max(2, maxCoefficient + 1);
+  if (!signed) {
+    return [false, digits];
+  }
+  return [true, digits.map((coefficient) => zigZagEncode(coefficient))];
 }
 
-function rowValue(row, base) {
+function rowValue(digits, base) {
   let value = 0n;
-  for (const weights of row) {
-    for (const coefficient of weights) {
-      value = value * BigInt(base) + BigInt(coefficient);
-    }
+  for (const digit of digits) {
+    value = value * BigInt(base) + BigInt(digit);
   }
   return value;
 }
@@ -346,14 +361,17 @@ function summandWidth(totalDynkinRank, base) {
 }
 
 function encodeSummand(row, totalDynkinRank) {
-  const base = rowBase(row);
+  const [signed, digits] = rowDigits(row);
+  const base = Math.max(2, Math.max(1, ...digits) + 1);
   const width = summandWidth(totalDynkinRank, base);
-  const valueChars = encodeCharacters(rowValue(row, base), width);
+  const valueChars = encodeCharacters(rowValue(digits, base), width);
+  const prefix = signed ? SIGNED_BASE_MARKER : "";
   if (base < 62) {
-    return encodeCharacters(base, 1) + valueChars;
+    return prefix + encodeCharacters(base, 1) + valueChars;
   }
   const baseCharacters = encodeNatural(base);
   return (
+    prefix +
     ESCAPE +
     encodeCharacters(baseCharacters.length, 1) +
     baseCharacters +
@@ -402,50 +420,56 @@ function encodeBundleText(summands, totalDynkinRank) {
   return summands.map((row) => encodeSummand(row, totalDynkinRank)).join("");
 }
 
+function decodeBundleBase(bundleText, position) {
+  if (position >= bundleText.length) {
+    throw new RangeError("unexpected end decoding bundle base");
+  }
+  const baseCharacter = bundleText[position];
+  const baseValue = BASE62_INDEX[baseCharacter];
+  if (baseValue === undefined) {
+    throw new RangeError(
+      `invalid bundle base character ${JSON.stringify(baseCharacter)}`,
+    );
+  }
+  if (baseValue === 0) {
+    if (position + 2 > bundleText.length) {
+      throw new RangeError("escaped base truncated");
+    }
+    const baseLen = Number(decodeCharacters(bundleText[position + 1]));
+    if (baseLen <= 0) {
+      throw new RangeError("escaped base length must be positive");
+    }
+    const baseStart = position + 2;
+    const baseEnd = baseStart + baseLen;
+    if (baseEnd > bundleText.length) {
+      throw new RangeError("escaped base truncated");
+    }
+    const base = toSafeInteger(
+      decodeCharacters(bundleText.slice(baseStart, baseEnd)),
+      "escaped base",
+    );
+    if (base < 62) {
+      throw new RangeError("escaped base must be at least 62");
+    }
+    return [base, baseEnd];
+  }
+  if (baseValue === 1) {
+    throw new RangeError("bundle base character 1 is reserved");
+  }
+  return [baseValue, position + 1];
+}
+
 function decodeBundleText(bundleText, factors, totalDynkinRank) {
   const summands = [];
   let position = 0;
   while (position < bundleText.length) {
-    const baseCharacter = bundleText[position];
-    const baseValue = BASE62_INDEX[baseCharacter];
-    if (baseValue === undefined) {
-      throw new RangeError(
-        `invalid bundle base character ${JSON.stringify(baseCharacter)}`,
-      );
-    }
-    let base;
-    if (baseValue === 0) {
-      if (position + 2 > bundleText.length) {
-        throw new RangeError("escaped base truncated");
-      }
-      const baseLen = Number(decodeCharacters(bundleText[position + 1]));
-      if (baseLen <= 0) {
-        throw new RangeError("escaped base length must be positive");
-      }
-      const baseStart = position + 2;
-      const baseEnd = baseStart + baseLen;
-      if (baseEnd > bundleText.length) {
-        throw new RangeError("escaped base truncated");
-      }
-      base = toSafeInteger(
-        decodeCharacters(bundleText.slice(baseStart, baseEnd)),
-        "escaped base",
-      );
-      if (base < 62) {
-        throw new RangeError("escaped base must be at least 62");
-      }
-      position = baseEnd;
-    } else if (baseValue === 1) {
-      throw new RangeError("bundle base character 1 is reserved");
-    } else {
-      base = baseValue;
-      if (!(2 <= base && base < 62)) {
-        throw new RangeError(
-          `invalid bundle base character ${JSON.stringify(baseCharacter)}`,
-        );
-      }
+    let signed = false;
+    if (BASE62_INDEX[bundleText[position]] === 1) {
+      signed = true;
       position += 1;
     }
+    let base;
+    [base, position] = decodeBundleBase(bundleText, position);
     const width = summandWidth(totalDynkinRank, base);
     const start = position;
     const end = start + width;
@@ -462,6 +486,11 @@ function decodeBundleText(bundleText, factors, totalDynkinRank) {
     }
     if (value !== 0n) {
       throw new RangeError("packed value exceeds range");
+    }
+    if (signed) {
+      for (let index = 0; index < flatCoefficients.length; index += 1) {
+        flatCoefficients[index] = zigZagDecode(flatCoefficients[index]);
+      }
     }
 
     const row = [];
@@ -482,31 +511,78 @@ function reorder(order, factors, summands) {
   ];
 }
 
-function permutations(indices) {
-  if (indices.length <= 1) {
-    return [indices.slice()];
+function columnProfile(index, summands, summandsF) {
+  const profile = summands.map((row) => JSON.stringify(row[index]));
+  if (summandsF !== null) {
+    profile.push("|");
+    profile.push(...summandsF.map((row) => JSON.stringify(row[index])));
   }
-  const result = [];
-  const working = indices.slice();
+  return profile.join(";");
+}
+
+function forEachUniqueBlockOrder(block, summands, summandsF, callback) {
+  const buckets = new Map();
+  for (const index of block) {
+    const profile = columnProfile(index, summands, summandsF);
+    const bucket = buckets.get(profile);
+    if (bucket) {
+      bucket.push(index);
+    } else {
+      buckets.set(profile, [index]);
+    }
+  }
+  if (buckets.size === block.length) {
+    const working = block.slice();
+    function visit(position) {
+      if (position === working.length) {
+        callback(working);
+        return;
+      }
+      for (
+        let swapIndex = position;
+        swapIndex < working.length;
+        swapIndex += 1
+      ) {
+        [working[position], working[swapIndex]] = [
+          working[swapIndex],
+          working[position],
+        ];
+        visit(position + 1);
+        [working[position], working[swapIndex]] = [
+          working[swapIndex],
+          working[position],
+        ];
+      }
+    }
+    visit(0);
+    return;
+  }
+
+  const groups = [...buckets.values()];
+  const counts = groups.map((group) => group.length);
+  const expanded = [];
+
   function visit(position) {
-    if (position === working.length) {
-      result.push(working.slice());
+    if (position === block.length) {
+      callback(expanded.map(([groupIndex, offset]) => groups[groupIndex][offset]));
       return;
     }
-    for (let swapIndex = position; swapIndex < working.length; swapIndex += 1) {
-      [working[position], working[swapIndex]] = [
-        working[swapIndex],
-        working[position],
-      ];
+    for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+      if (counts[groupIndex] === 0) {
+        continue;
+      }
+      counts[groupIndex] -= 1;
+      expanded.push([
+        groupIndex,
+        groups[groupIndex].length - counts[groupIndex] - 1,
+      ]);
       visit(position + 1);
-      [working[position], working[swapIndex]] = [
-        working[swapIndex],
-        working[position],
-      ];
+      expanded.pop();
+      counts[groupIndex] += 1;
     }
   }
+
   visit(0);
-  return result;
 }
 
 export function canonicalize(factors, summands, summandsF, k) {
@@ -535,6 +611,9 @@ export function canonicalize(factors, summands, summandsF, k) {
   let orderedSummandsF = isDegeneracy
     ? reorder(initialOrder, normalizedFactors, normalizedSummandsF)[1]
     : null;
+  if (!isDegeneracy && orderedSummands.length === 0) {
+    return [orderedFactors, orderedSummands];
+  }
   const totalDynkinRank = orderedFactors.reduce(
     (sum, factor) => sum + factor.rank,
     0,
@@ -549,12 +628,25 @@ export function canonicalize(factors, summands, summandsF, k) {
     ) {
       stop += 1;
     }
-    const block = Array.from(
-      { length: stop - start },
-      (_, offset) => start + offset,
+    equalFactorBlocks.push(
+      Array.from({ length: stop - start }, (_, offset) => start + offset),
     );
-    equalFactorBlocks.push(block.length === 1 ? [block] : permutations(block));
     start = stop;
+  }
+
+  const sortBySummandCode = (left, right) =>
+    compareLexicographic(
+      encodeSummand(left, totalDynkinRank),
+      encodeSummand(right, totalDynkinRank),
+    );
+
+  if (equalFactorBlocks.every((block) => block.length === 1)) {
+    orderedSummands.sort(sortBySummandCode);
+    if (isDegeneracy) {
+      orderedSummandsF.sort(sortBySummandCode);
+      return [orderedFactors, orderedSummands, orderedSummandsF, k];
+    }
+    return [orderedFactors, orderedSummands];
   }
 
   let bestSignature = null;
@@ -591,19 +683,26 @@ export function canonicalize(factors, summands, summandsF, k) {
       }
       return;
     }
-    for (const choice of equalFactorBlocks[blockIndex]) {
-      currentOrder.push(...choice);
+    const block = equalFactorBlocks[blockIndex];
+    if (block.length === 1) {
+      currentOrder.push(block[0]);
       explore(blockIndex + 1);
-      currentOrder.length -= choice.length;
+      currentOrder.pop();
+      return;
     }
+    forEachUniqueBlockOrder(
+      block,
+      orderedSummands,
+      orderedSummandsF,
+      (choice) => {
+        currentOrder.push(...choice);
+        explore(blockIndex + 1);
+        currentOrder.length -= choice.length;
+      },
+    );
   }
 
   explore(0);
-  const sortBySummandCode = (left, right) =>
-    compareLexicographic(
-      encodeSummand(left, totalDynkinRank),
-      encodeSummand(right, totalDynkinRank),
-    );
   if (isDegeneracy) {
     orderedSummandsF = reorder(bestOrder, orderedFactors, orderedSummandsF)[1];
   }

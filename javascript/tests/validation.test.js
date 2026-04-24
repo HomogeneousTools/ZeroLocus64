@@ -22,6 +22,15 @@ test("high coefficients choose larger bases", () => {
   );
 });
 
+test("negative coefficients use signed rows", () => {
+  const label = encodeLabel([new Factor("A", 1, 1)], [[[-1]]]);
+  assert.equal(label, "1.121");
+  assert.deepEqual(
+    normalizeDecoded(decodeLabel(label)),
+    normalizeDecoded([[new Factor("A", 1, 1)], [[[-1]]]]),
+  );
+});
+
 test("multiple summands may use different bases", () => {
   const factors = [new Factor("A", 1, 1), new Factor("A", 1, 1)];
   const summands = [
@@ -42,6 +51,15 @@ test("invalid Dynkin type rank pairs are rejected on encode", () => {
     (error) =>
       error instanceof Error &&
       error.message.includes("invalid Dynkin type/rank pair"),
+  );
+});
+
+test("weight vectors must match the Dynkin rank", () => {
+  assert.throws(
+    () => encodeLabel([new Factor("A", 2, 1)], [[[1]]]),
+    (error) =>
+      error instanceof Error &&
+      error.message.includes("highest-weight length must match the Dynkin rank"),
   );
 });
 

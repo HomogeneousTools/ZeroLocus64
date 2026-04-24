@@ -28,6 +28,7 @@ const SPEC_EXAMPLES = [
   ["P1 with O + O(1)", [new Factor("A", 1, 1)], [[[0]], [[1]]], "1.2021"],
   ["P3", [new Factor("A", 3, 1)], [], "30"],
   ["P3 with O(1)", [new Factor("A", 3, 1)], [[[1, 0, 0]]], "30.24"],
+  ["P3 with O(-1)", [new Factor("A", 3, 1)], [[[-1, 0, 0]]], "30.124"],
   [
     "P3 split bundle",
     [new Factor("A", 3, 1)],
@@ -139,7 +140,7 @@ for (const [label, message] of [
   ["0A2H", "escaped rank truncated"],
   ["0A1H", "mask truncated"],
   ["23", "mask out of range"],
-  ["11.1", "bundle base character 1 is reserved"],
+  ["11.111", "bundle base character 1 is reserved"],
   ["11.2", "summand truncated"],
   ["30.21.", "invalid bundle base character"],
 ]) {
@@ -157,7 +158,7 @@ test("curated canonicalization case stays stable", () => {
   );
   assert.ok(exampleCase);
   const factors = factorsFromCase(exampleCase);
-  const summands = exampleCase.summands;
+  const summands = exampleCase.summands.map((row) => [...row].reverse());
   assert.equal(
     encodeLabel([...factors].reverse(), [...summands].reverse()),
     exampleCase.label,
@@ -253,6 +254,26 @@ test("escaped base round-trip: large coefficient", () => {
   );
 });
 
+test("signed weight round-trip", () => {
+  const factors = [new Factor("A", 1, 1)];
+  const summands = [[[-1]]];
+  const label = encodeLabel(factors, summands);
+  assert.equal(label, "1.121");
+  assert.deepEqual(
+    normalizeDecoded(decodeLabel(label)),
+    normalizeDecoded(canonicalize(factors, summands)),
+  );
+});
+
+test("signed weights sort canonically across equal factors", () => {
+  const factors = [new Factor("A", 1, 1), new Factor("A", 1, 1)];
+  const summands = [
+    [[0], [-1]],
+    [[-1], [0]],
+  ];
+  assert.equal(encodeLabel(factors, summands), "11.121122");
+});
+
 test("isCanonical accepts escaped base labels", () => {
   assert.equal(isCanonical("1.0210z"), true);
   assert.equal(isCanonical("1.021d1c"), true);
@@ -267,6 +288,14 @@ test("LOCUS_SEP constant is dash", () => {
 
 const DEGENERACY_EXAMPLES = [
   ["P1 id", [new Factor("A", 1, 1)], [[[1]]], [[[1]]], 0, "1.21-21-0"],
+  [
+    "P1 signed source",
+    [new Factor("A", 1, 1)],
+    [[[-1]]],
+    [[[1]]],
+    0,
+    "1.121-21-0",
+  ],
   [
     "P1xP1",
     [new Factor("A", 1, 1), new Factor("A", 1, 1)],
