@@ -25,17 +25,17 @@ def factors_from_case(case: dict) -> list[Factor]:
 
 SPEC_EXAMPLES = [
     ("P1", [Factor("A", 1, 1)], [], "1"),
-    ("P1 with O(1)", [Factor("A", 1, 1)], [[[1]]], "1.21"),
-    ("P1 with O + O(1)", [Factor("A", 1, 1)], [[[0]], [[1]]], "1.2021"),
+    ("P1 with O(1)", [Factor("A", 1, 1)], [[[1]]], "1.0"),
+    ("P1 with O + O(1)", [Factor("A", 1, 1)], [[[0]], [[1]]], "1.0x1"),
     ("P3", [Factor("A", 3, 1)], [], "30"),
-    ("P3 with O(1)", [Factor("A", 3, 1)], [[[1, 0, 0]]], "30.24"),
-    ("P3 with O(-1)", [Factor("A", 3, 1)], [[[-1, 0, 0]]], "30.124"),
-    ("P3 split bundle", [Factor("A", 3, 1)], [[[1, 0, 0]], [[0, 0, 1]]], "30.2124"),
+    ("P3 with O(1)", [Factor("A", 3, 1)], [[[1, 0, 0]]], "30.0"),
+    ("P3 with O(-1)", [Factor("A", 3, 1)], [[[-1, 0, 0]]], "30.z2020"),
+    ("P3 split bundle", [Factor("A", 3, 1)], [[[1, 0, 0]], [[0, 0, 1]]], "30.02"),
     ("Gr(2,4)", [Factor("A", 3, 2)], [], "31"),
     ("Gr(3,6)", [Factor("A", 5, 4)], [], "53"),
     ("Fl(1,3,4)", [Factor("A", 3, 5)], [], "34"),
     ("Q5", [Factor("B", 3, 1)], [], "H0"),
-    ("Q5 with bundle", [Factor("B", 3, 1)], [[[1, 0, 0]]], "H0.24"),
+    ("Q5 with bundle", [Factor("B", 3, 1)], [[[1, 0, 0]]], "H0.0"),
     ("B5/B", [Factor("B", 5, 31)], [], "JU"),
     ("OGr(5,10)", [Factor("D", 5, 16)], [], "iF"),
     ("Freudenthal", [Factor("E", 7, 64)], [], "u11"),
@@ -52,26 +52,26 @@ SPEC_EXAMPLES = [
             Factor("A", 1, 1),
         ],
         [[[1], [1], [1], [1], [1]]],
-        "11111.2V",
+        "11111.x6000",
     ),
-    ("P1xP1 diagonal", [Factor("A", 1, 1), Factor("A", 1, 1)], [[[1], [1]]], "11.23"),
+    ("P1xP1 diagonal", [Factor("A", 1, 1), Factor("A", 1, 1)], [[[1], [1]]], "11.E"),
     (
         "P1xP1 split",
         [Factor("A", 1, 1), Factor("A", 1, 1)],
         [[[1], [0]], [[0], [1]]],
-        "11.2122",
+        "11.01",
     ),
     (
         "(P1)^3 v2.2 positive difference",
         [Factor("A", 1, 1), Factor("A", 1, 1), Factor("A", 1, 1)],
         [[[0], [0], [1]], [[0], [2], [0]]],
-        "111.2232",
+        "111.15",
     ),
     (
         "(P1)^3 v2.2 signed difference",
         [Factor("A", 1, 1), Factor("A", 1, 1), Factor("A", 1, 1)],
         [[[-1], [-1], [-1]], [[-1], [-1], [0]]],
-        "111.126127",
+        "111.z3020z420",
     ),
 ]
 
@@ -105,12 +105,10 @@ def test_spec_examples_are_stable(
 
 def test_encode_label_canonicalizes_factor_order() -> None:
     assert (
-        encode_label([Factor("A", 2, 1), Factor("A", 1, 1)], [[[0, 1], [1]]])
-        == "120.25"
+        encode_label([Factor("A", 2, 1), Factor("A", 1, 1)], [[[0, 1], [1]]]) == "120.M"
     )
     assert (
-        encode_label([Factor("A", 1, 1), Factor("A", 2, 1)], [[[1], [0, 1]]])
-        == "120.25"
+        encode_label([Factor("A", 1, 1), Factor("A", 2, 1)], [[[1], [0, 1]]]) == "120.M"
     )
 
 
@@ -136,9 +134,9 @@ def test_curated_case_names_are_unique(curated_cases: list[dict]) -> None:
         ("0A2H", "escaped rank truncated"),
         ("0A1H", "mask truncated"),
         ("23", "mask out of range"),
-        ("11.111", "bundle base character 1 is reserved"),
-        ("11.2", "summand truncated"),
-        ("30.21.", "invalid bundle base character"),
+        ("11.x", "unexpected end decoding support size"),
+        ("11.2", "label is not in canonical form"),
+        ("30.21.", "invalid bundle row lead character"),
     ],
 )
 def test_invalid_labels_raise_descriptive_errors(label: str, message: str) -> None:
@@ -158,31 +156,14 @@ def test_curated_canonicalization_cases_match_their_expected_labels(
     )
 
 
-def test_v22_graph_canonicalization_changes_selected_v21_labels(
-    curated_cases: list[dict],
-) -> None:
-    indexed = {case["name"]: case for case in curated_cases}
-    for name in (
-        "v22_equal_factors_positive_difference",
-        "v22_equal_factors_signed_difference",
-    ):
-        case = indexed[name]
-        factors = factors_from_case(case)
-        summands = case["summands"]
-        assert encode_label(factors, summands) == case["label"]
-        assert case["label_v21"] != case["label"]
-        with pytest.raises(ValueError, match="not in canonical form"):
-            decode_label(case["label_v21"])
-
-
 @pytest.mark.parametrize(
     ("label", "canonical"),
     [
-        ("201.25", "120.26"),
-        ("1.2120", "1.2021"),
-        ("11.2221", "11.2122"),
-        ("111.2136", "111.2232"),
-        ("111.123127", "111.126127"),
+        ("201.25", "120.M"),
+        ("1.2120", "1.0x1"),
+        ("11.2221", "11.01"),
+        ("111.2136", "111.15"),
+        ("111.123127", "111.z3020z420"),
     ],
 )
 def test_noncanonical_labels_are_rejected(label: str, canonical: str) -> None:
@@ -193,9 +174,9 @@ def test_noncanonical_labels_are_rejected(label: str, canonical: str) -> None:
 
 def test_is_canonical_on_valid_labels() -> None:
     assert is_canonical("1") is True
-    assert is_canonical("1.21") is True
-    assert is_canonical("11.2122") is True
-    assert is_canonical("30.24") is True
+    assert is_canonical("1.0") is True
+    assert is_canonical("11.01") is True
+    assert is_canonical("30.0") is True
 
 
 def test_is_canonical_on_noncanonical_labels() -> None:
@@ -214,7 +195,7 @@ def test_escaped_base_round_trip_coeff_61() -> None:
     factors = [Factor("A", 1, 1)]
     summands = [[[61]]]
     label = encode_label(factors, summands)
-    assert label == "1.0210z"
+    assert label == "1.y2zy"
     result = decode_label(label)
     canon = canonicalize(factors, summands)
     assert result["factors"] == canon[0]
@@ -225,7 +206,7 @@ def test_escaped_base_round_trip_coeff_100() -> None:
     factors = [Factor("A", 1, 1)]
     summands = [[[100]]]
     label = encode_label(factors, summands)
-    assert label == "1.021d1c"
+    assert label == "1.y2021c1b"
     result = decode_label(label)
     canon = canonicalize(factors, summands)
     assert result["factors"] == canon[0]
@@ -236,7 +217,7 @@ def test_escaped_base_mixed_standard_and_escaped() -> None:
     factors = [Factor("A", 1, 1)]
     summands = [[[61]], [[1]]]
     label = encode_label(factors, summands)
-    assert label == "1.0210z21"
+    assert label == "1.0y2zy"
     result = decode_label(label)
     canon = canonicalize(factors, summands)
     assert result["factors"] == canon[0]
@@ -257,7 +238,7 @@ def test_signed_weight_round_trip() -> None:
     factors = [Factor("A", 1, 1)]
     summands = [[[-1]]]
     label = encode_label(factors, summands)
-    assert label == "1.121"
+    assert label == "1.z220"
     result = decode_label(label)
     canon = canonicalize(factors, summands)
     assert result["factors"] == canon[0]
@@ -267,7 +248,7 @@ def test_signed_weight_round_trip() -> None:
 def test_signed_weights_sort_canonically_across_equal_factors() -> None:
     factors = [Factor("A", 1, 1), Factor("A", 1, 1)]
     summands = [[[0], [-1]], [[-1], [0]]]
-    assert encode_label(factors, summands) == "11.121122"
+    assert encode_label(factors, summands) == "11.z2020z2120"
 
 
 # --- Degeneracy locus tests ---
@@ -284,7 +265,7 @@ DEGENERACY_SPEC_EXAMPLES = [
         [[[1]]],
         [[[1]]],
         0,
-        "1.21-21-0",
+        "1.0-0-0",
     ),
     (
         "P1 signed source",
@@ -292,7 +273,7 @@ DEGENERACY_SPEC_EXAMPLES = [
         [[[-1]]],
         [[[1]]],
         0,
-        "1.121-21-0",
+        "1.z220-0-0",
     ),
     (
         "P1xP1",
@@ -300,7 +281,7 @@ DEGENERACY_SPEC_EXAMPLES = [
         [[[1], [0]]],
         [[[0], [1]]],
         0,
-        "11.21-22-0",
+        "11.1-0-0",
     ),
     (
         "P3 two-to-one",
@@ -308,7 +289,7 @@ DEGENERACY_SPEC_EXAMPLES = [
         [[[1, 0, 0]], [[1, 0, 0]]],
         [[[2, 0, 0]]],
         1,
-        "30.2424-3I-1",
+        "30.00-3-1",
     ),
 ]
 
@@ -334,7 +315,7 @@ def test_degeneracy_spec_examples(
 
 
 def test_degeneracy_decode_returns_tagged_result() -> None:
-    result = decode_label("1.21-21-0")
+    result = decode_label("1.0-0-0")
     assert result["type"] == "degeneracy_locus"
     assert len(result["factors"]) == 1
     assert result["summands_e"] == [[[1]]]
@@ -362,7 +343,7 @@ def test_degeneracy_canonicalize_minimizes_e_then_f() -> None:
     factors = [Factor("A", 1, 1), Factor("A", 1, 1)]
     label1 = encode_label(factors, [[[1], [0]]], [[[0], [1]]], 0)
     label2 = encode_label(factors, [[[0], [1]]], [[[1], [0]]], 0)
-    assert label1 == label2 == "11.21-22-0"
+    assert label1 == label2 == "11.1-0-0"
 
 
 def test_degeneracy_rank_bound_gt_zero() -> None:
@@ -382,9 +363,9 @@ def test_degeneracy_rank_bound_62_uses_two_chars() -> None:
 
 
 def test_is_canonical_degeneracy() -> None:
-    assert is_canonical("1.21-21-0") is True
-    assert is_canonical("11.21-22-0") is True
-    assert is_canonical("30.2424-3I-1") is True
+    assert is_canonical("1.0-0-0") is True
+    assert is_canonical("11.1-0-0") is True
+    assert is_canonical("30.00-3-1") is True
 
 
 @pytest.mark.parametrize(
@@ -402,7 +383,7 @@ def test_invalid_degeneracy_labels(label: str, message: str) -> None:
 
 
 def test_zero_locus_decode_tagged() -> None:
-    result = decode_label("1.21")
+    result = decode_label("1.0")
     assert result["type"] == "zero_locus"
     assert result["summands"] == [[[1]]]
 
@@ -414,6 +395,6 @@ def test_ambient_decode_tagged() -> None:
 
 
 def test_is_canonical_on_escaped_base_labels() -> None:
-    assert is_canonical("1.0210z") is True
-    assert is_canonical("1.021d1c") is True
-    assert is_canonical("1.0210z21") is True
+    assert is_canonical("1.y2zy") is True
+    assert is_canonical("1.y2021c1b") is True
+    assert is_canonical("1.0y2zy") is True

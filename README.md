@@ -4,9 +4,9 @@
 [![Docs](https://img.shields.io/badge/docs-zl62.homogeneous.tools-blue)](https://zl62.homogeneous.tools)
 [![Release](https://img.shields.io/github/v/release/HomogeneousTools/ZeroLocus62?color=green)](https://github.com/HomogeneousTools/ZeroLocus62/releases)
 
-ZeroLocus62 is a compact, canonical encoding for bundles, zero loci, and degeneracy loci of completely reducible vector bundles on partial flag varieties. A label with one bundle part can always be read as a canonical description of the underlying bundle itself, even when no zero-locus interpretation is intended or the bundle is not globally generated. This repository contains the v2.2 format specification together with independent Python, Julia, JavaScript, and Macaulay2 reference implementations, plus a small browser-based decoder website.
+ZeroLocus62 is a compact, canonical encoding for bundles, zero loci, and degeneracy loci of completely reducible vector bundles on partial flag varieties. A label with one bundle part can always be read as a canonical description of the underlying bundle itself, even when no zero-locus interpretation is intended or the bundle is not globally generated. This repository contains the v3 format specification together with independent Python, Julia, JavaScript, and Macaulay2 reference implementations, plus a small browser-based decoder website.
 
-The canonical format definition is [specification.md](specification.md). Treat that document as the source of truth for the v2.2 wire format, canonicalization rules, and worked examples.
+The canonical format definition is [specification.md](specification.md). Treat that document as the source of truth for the v3 wire format, canonicalization rules, and worked examples.
 
 ## Repository layout
 
@@ -20,7 +20,7 @@ The canonical format definition is [specification.md](specification.md). Treat t
 
 ## Reference API
 
-The reference implementations of the v2.2 format are:
+The reference implementations of the v3 format are:
 
 - [python/src/zerolocus62/](python/src/zerolocus62/)
 - [julia/src/](julia/src/)
@@ -56,7 +56,7 @@ The public Python API is exposed from `zerolocus62`:
 from zerolocus62 import Factor, decode_label, encode_label
 
 label = encode_label([Factor("A", 1, 1)], [[[1]]])
-assert label == "1.21"
+assert label == "1.0"
 assert decode_label(label)["summands"] == [[[1]]]
 ```
 
@@ -74,7 +74,7 @@ The public Julia API is exposed from `ZeroLocus62`:
 using ZeroLocus62
 
 label = encode_label([Factor('A', 1, 1)], [[[1]]])
-@assert label == "1.21"
+@assert label == "1.0"
 @assert decode_label(label).summands == [[[1]]]
 ```
 
@@ -98,7 +98,7 @@ The public JavaScript API is exposed from `zerolocus62`:
 import { Factor, decodeLabel, encodeLabel } from "zerolocus62";
 
 const label = encodeLabel([new Factor("A", 1, 1)], [[[1]]]);
-console.assert(label === "1.21");
+console.assert(label === "1.0");
 
 const result = decodeLabel(label);
 console.assert(result.factors[0].group === "A");
@@ -148,3 +148,4 @@ Deployment to GitHub Pages is handled by [.github/workflows/pages.yml](.github/w
   Examples of the v2.1 → v2.2 change:
   - `(P^1)^3`, `O(0,0,1) + O(0,2,0)`: `111.2136` → `111.2232`
   - `(P^1)^3`, `O(-1,-1,-1) + O(-1,-1,0)`: `111.123127` → `111.126127`
+- **v3** — Replaced the old dense/base-descriptor bundle-row format by a sparse row codec optimized for small positive coefficients. The ambient encoding and graph-certificate canonicalization are unchanged, but many bundle labels become substantially shorter.

@@ -1,8 +1,8 @@
-# ZeroLocus62 format specification v2.2
+# ZeroLocus62 format specification v3
 
 ## Status
 
-This document defines Version 2.2 of the ZeroLocus62 encoding format for zero loci and degeneracy loci of completely reducible vector bundles on partial flag varieties. It is intended to be read as an RFC-like specification for the wire format and canonicalization rules.
+This document defines Version 3 of the ZeroLocus62 encoding format for zero loci and degeneracy loci of completely reducible vector bundles on partial flag varieties. It is intended to be read as an RFC-like specification for the wire format and canonicalization rules.
 
 ## 1. Conventions
 
@@ -50,7 +50,7 @@ To represent one summand as a flat array, ZeroLocus62 concatenates these $m$ coe
 
 $$d = (\lambda^{(1)}_1, \ldots, \lambda^{(1)}_{r_1},\ \lambda^{(2)}_1, \ldots, \lambda^{(2)}_{r_2},\ \ldots,\ \lambda^{(m)}_1, \ldots, \lambda^{(m)}_{r_m}).$$
 
-The result is a single sequence of integers of total length $W = \sum_i r_i$, called the summand row. All arithmetic for encoding that summand — choosing the base, packing the value — operates on this flat sequence. Rows with only non-negative coefficients use the unsigned bundle-row form of §8.1; rows with at least one negative coefficient use the signed bundle-row form of §8.1.
+The result is a single sequence of integers of total length $W = \sum_i r_i$, called the summand row. All bundle-row arithmetic in §8 operates on this flat sequence: support positions are chosen in this order, direct row codes are indexed in this order, and packed payloads use this order.
 
 An encoder MUST reject any summand whose structure does not match the ambient: each summand row MUST contain exactly one weight vector per ambient factor, and each weight vector MUST have length equal to that factor's Dynkin rank.
 
@@ -90,11 +90,7 @@ The character `.` is reserved as the ambient-locus separator and MUST NOT appear
 
 The character `-` is reserved as the intra-locus separator for degeneracy loci and MUST NOT appear as a data character.
 
-The 62 alphanumeric characters are all safe in URLs and filenames without percent-encoding. Future versions of this format MAY assign meaning to additional URL-safe non-alphanumeric characters (such as `_` or `~`) to encode further information; any such extension requires a new format version. This format does not include an in-band version identifier. Forward-compatible evolution therefore requires that any new syntax is reliably rejected by v2.0 decoders.
-
-Because `-` is not a member of the Base62 alphabet, labels containing `-` are reliably rejected by v1.1 decoders.
-
-Version 2.1 additionally assigns meaning to the previously reserved bundle-row lead character `1`: when it appears at the start of one encoded summand row, it marks the signed-row form defined in §8.1. This syntax is reliably rejected by v2.0 decoders because they rejected `1` as a bundle base character.
+The 62 alphanumeric characters are all safe in URLs and filenames without percent-encoding. This format does not include an in-band version identifier. In particular, v3 bundle rows are not designed to be decoded by v2.2 implementations, so version selection is an out-of-band concern.
 
 Every label has exactly one of the following schematic forms:
 
@@ -138,7 +134,7 @@ A label is **canonical** if and only if it is produced by the following ordered 
 2. The remaining ambiguity among equal encoded ambient factors is resolved by canonically labeling the colored edge-labeled bipartite graph built from the ambient factors and bundle summands as described in §6.2.
 3. After the ambient factor order is fixed, each group of summand rows is sorted by its encoded strings in ascending code-unit order.
 
-The v2.2 canonicalization rule is intentionally not the v2.1 lexicographic minimum over all equal-factor permutations. It is a different canonical labeling rule, so some labels that were canonical in v2.1 are not canonical in v2.2.
+The v3 canonicalization rule is intentionally not the v2.1 lexicographic minimum over all equal-factor permutations. It is the graph-certificate rule introduced in v2.2, so some labels that were canonical in v2.1 are not canonical in v3.
 
 ### 6.2 Canonical graph
 
@@ -178,7 +174,7 @@ Any implementation is valid if and only if it produces exactly the same canonica
 
 ### 6.4 Complexity
 
-Version 2.2 eliminates v2.1's normative exhaustive search over the Cartesian product of equal-factor permutations. The reference algorithm instead uses ordered-partition refinement with individualization/backtracking on the canonical graph of §6.2.
+Version 3 retains the graph-certificate canonicalization introduced in v2.2, replacing v2.1's normative exhaustive search over the Cartesian product of equal-factor permutations. The reference algorithm instead uses ordered-partition refinement with individualization/backtracking on the canonical graph of §6.2.
 
 This change removes the explicit $\prod_i |B_i|!$ permutation enumeration from the format definition. The reference algorithm is still an exact graph-canonization procedure, so highly symmetric inputs may require substantial backtracking and are not known to admit a polynomial-time solution in full generality. In practice, refinement usually splits most cells quickly.
 
@@ -212,7 +208,7 @@ The standard ambient type table is, in order:
 A1..A15, B2..B15, C3..C15, D4..D15, E6, E7, E8, F4, G2
 ```
 
-The character value `0` is reserved as the escape character. The remaining 59 characters are assigned to the 59 entries of the standard table in order. Positions 60 and 61 of the alphabet (`y` and `z`) are currently unused.
+The character value `0` is reserved as the escape character. The remaining 59 characters are assigned to the 59 entries of the standard table in order. In the ambient part, all 60 alphanumeric non-zero characters may therefore occur. In the bundle part, the row lead characters `w`, `x`, `y`, and `z` have special meanings defined in §8.
 
 Here w denotes the mask width. The five column groups correspond to Lie types A, B, C, D, and the remaining types E, F, G (all three of which appear in the standard table).
 
@@ -295,96 +291,128 @@ d_0, d_1, ..., d_{W-1}
 
 where `W` is the total ambient Dynkin rank.
 
-Version 2.1 has two row forms.
+Write the non-zero support of this row as
 
-#### 8.1.1 Unsigned row form
+```text
+(p_0, c_0), ..., (p_{s-1}, c_{s-1})
+```
 
-If every coefficient satisfies `d_j >= 0`, define
+where `0 <= p_0 < ... < p_{s-1} < W`, every `c_i` is non-zero, and `s` is the support size. The zero row has `s = 0`.
 
-$$
-B = \max(2, 1 + \max_j d_j).
-$$
+Two helper notions are used throughout:
 
-The lower bound of 2 ensures that base-$B$ representation remains non-degenerate: in base 1, every integer maps to 0 regardless of its value, making the coefficient vector unrecoverable.
+1. `states_width(N)` is the smallest integer `k >= 0` with `62^k >= N`.
+2. A positive integer **descriptor** is encoded as:
+   - one Base62 character of the same value when the integer lies in `1..61`;
+   - otherwise `0 <len> <digits>`, where `<digits>` is the shortest Base62 representation of the integer and `<len>` is its character length encoded in one Base62 character.
 
-The packed value is
+The v3 bundle-row codec has four row modes.
 
-$$
-v = \sum_{j=0}^{W-1} d_j B^{W-1-j}.
-$$
+#### 8.1.1 Direct small-single rows
 
-Equivalently, start with `v = 0` and update `v <- v B + d_j` from left to right.
-
-#### 8.1.2 Signed row form
-
-If at least one coefficient is negative, first transform each coefficient to a non-negative digit by the ZigZag bijection
+Let
 
 $$
-e_j =
+L = \min\!\left(7,\left\lfloor\frac{58}{W}\right\rfloor\right).
+$$
+
+If `s = 1` and `1 <= c_0 <= L`, the row is encoded in one character whose Base62 value is
+
+$$
+(c_0 - 1)W + p_0.
+$$
+
+This dedicates the first `W L` one-character row codes to sparse positive singleton rows with small coefficients.
+
+#### 8.1.2 Two-sparse all-ones rows
+
+If `s = 2` and `(c_0, c_1) = (1, 1)`, let `r` be the rank of the support `{p_0, p_1}` among the 2-element subsets of `{0, ..., W-1}` in lexicographic order.
+
+If
+
+$$
+WL + \binom{W}{2} \le 58,
+$$
+
+the row is encoded in one character of Base62 value
+
+$$
+WL + r.
+$$
+
+Otherwise the row is encoded as
+
+```text
+w <support_rank_characters>
+```
+
+where `<support_rank_characters>` is the fixed-width `states_width(binomial(W,2))` encoding of `r`.
+
+#### 8.1.3 Small positive sparse rows
+
+If every non-zero coefficient is positive and lies in `1..7`, the row is encoded as
+
+```text
+x <support_size+1 descriptor> <support_rank_characters> <value_characters>
+```
+
+with the following fields:
+
+- `<support_size+1 descriptor>` is the descriptor of `s + 1`; therefore the zero row is encoded canonically as `x1`;
+- `<support_rank_characters>` is the fixed-width encoding of the rank of `{p_0, ..., p_{s-1}}` among the `s`-element subsets of `{0, ..., W-1}`;
+- `<value_characters>` packs the digits `c_i - 1` in base `7`:
+
+  $$
+  v = \sum_{i=0}^{s-1} (c_i - 1) 7^{s-1-i},
+  $$
+
+  using fixed width `states_width(7^s)`.
+
+This mode is the main new optimization of v3: it avoids writing an explicit value base for sparse rows with small positive coefficients.
+
+#### 8.1.4 Generic positive and signed sparse rows
+
+All remaining rows use one of the generic sparse forms
+
+```text
+y <support_size+1 descriptor> <support_rank_characters> <base descriptor> <value_characters>
+z <support_size+1 descriptor> <support_rank_characters> <base descriptor> <value_characters>
+```
+
+For the `y` form, all coefficients are non-negative. The packed digits are `c_i - 1`, and the value base is
+
+$$
+B = \max(2, 1 + \max_i (c_i - 1)).
+$$
+
+For the `z` form, first apply the ZigZag bijection
+
+$$
+\operatorname{zigzag}(c) =
 \begin{cases}
-2d_j & \text{if } d_j \ge 0, \\
--2d_j - 1 & \text{if } d_j < 0.
+2c & \text{if } c \ge 0, \\
+-2c - 1 & \text{if } c < 0.
 \end{cases}
 $$
 
-The inverse map is
+The packed digits are then `zigzag(c_i)`, and
 
 $$
-d_j =
-\begin{cases}
-e_j / 2 & \text{if } e_j \text{ is even}, \\
--(e_j + 1) / 2 & \text{if } e_j \text{ is odd}.
-\end{cases}
+B = \max(2, 1 + \max_i \operatorname{zigzag}(c_i)).
 $$
 
-Now define
+In either form:
 
-$$
-B = \max(2, 1 + \max_j e_j)
-$$
+- `<support_size+1 descriptor>` again stores `s + 1`;
+- `<support_rank_characters>` is the fixed-width encoding of the support rank among `s`-element subsets of `{0, ..., W-1}`;
+- `<base descriptor>` stores `B`;
+- `<value_characters>` packs the chosen digits in base `B`:
 
-and pack the transformed digits:
+  $$
+  v = \sum_{i=0}^{s-1} e_i B^{s-1-i},
+  $$
 
-$$
-v = \sum_{j=0}^{W-1} e_j B^{W-1-j}.
-$$
-
-#### 8.1.3 Base descriptor and final row encoding
-
-Each summand row chooses its own base `B`. In either row form, `value_characters` is the fixed-width encoding of `v` using the smallest `k >= 1` such that
-
-$$
-62^k \ge B^W.
-$$
-
-Consequently, every valid summand row satisfies
-
-$$
-0 \le v < B^W.
-$$
-
-Define the **base descriptor** as follows:
-
-- if `B` is in the range `2..61`, the descriptor is the single ZeroLocus62 character for `B`; character values `0` and `1` MUST NOT appear as a direct base descriptor;
-- if `B >= 62`, the descriptor is
-
-  ```text
-  0 <base_len> <base_characters>
-  ```
-
-  where:
-  - `0` is the escape character (Base62 value 0);
-  - `<base_characters>` is the shortest non-empty character string representing `B`;
-  - `<base_len>` is one character giving the number of characters used by `<base_characters>`.
-
-The final row encoding is then:
-
-- **unsigned row:** `<base_descriptor> <value_characters>`;
-- **signed row:** `1 <base_descriptor> <value_characters>`.
-
-The leading `1` in the signed form is the signed-row marker. It is not part of the base descriptor; the descriptor that follows it still obeys the same `2..61` / escaped-`0` rules as above.
-
-Because `<base_len>` is a single character, the base value can occupy at most 61 characters. Therefore an escaped base is encodable only when the shortest representation of `B` uses at most 61 characters, equivalently when `B \le 62^{61} - 1`. An encoder MUST reject any summand row outside that bound. This is a hard format limit.
+  where `e_i = c_i - 1` in the `y` form and `e_i = zigzag(c_i)` in the `z` form, using fixed width `states_width(B^s)`.
 
 ### 8.2 Multiple summands
 
@@ -394,13 +422,13 @@ $$
 E_1 \oplus \cdots \oplus E_t,
 $$
 
-then $t$ MUST be positive and each summand row is encoded separately. Bundles with zero summands are not representable in the wire format. For zero loci, the empty-bundle case is represented by the ambient-only form rather than by an empty bundle encoding. If the encoded rows are `s_1, ..., s_t`, their lexicographically sorted order `s_(1) <= ... <= s_(t)` is concatenated directly to form the locus part:
+then $t$ MUST be positive and each summand row is encoded separately. Bundles with zero summands are not representable in the wire format. For zero loci, the empty-bundle case is represented by the ambient-only form rather than by an empty bundle encoding. If the encoded rows are `s_1, ..., s_t`, their lexicographically sorted order `s_{(1)} <= ... <= s_{(t)}` is concatenated directly to form the locus part:
 
 $$
 s_{(1)} \cdots s_{(t)}.
 $$
 
-The number of summands is not written explicitly. Decoding remains unambiguous because the ambient part determines `W`, and each summand begins with either an optional signed-row marker followed by a base descriptor, or directly with a base descriptor; that descriptor determines the width of its remaining value field.
+The number of summands is not written explicitly. Decoding remains unambiguous because the ambient part determines `W`, which determines `L`, and each summand begins either with a direct one-character code or with one of the explicit row markers `w`, `x`, `y`, `z`, each of which determines how to decode the remaining fields.
 
 ### 8.3 Rank bound encoding
 
@@ -425,37 +453,37 @@ If $E$ has no summands, `<bundle_E>` is the empty string, but since an empty seg
 
 ## 9. Decoding
 
-To decode a label:
+To decode a bundle row, first compute `W` and `L = min(7, floor(58 / W))`.
+
+1. Read the next character and let `u` be its Base62 value.
+2. If `u < WL`, decode a direct small-single row:
+   - position `p = u mod W`;
+   - coefficient `c = floor(u / W) + 1`.
+3. Otherwise, if `WL + binomial(W,2) <= 58` and `WL <= u < WL + binomial(W,2)`, decode a direct two-sparse all-ones row from the support rank `u - WL`.
+4. Otherwise inspect the row marker:
+   - `w`: decode a two-sparse all-ones row from the following fixed-width support-rank field;
+   - `x`: decode `s + 1`, then the support rank, then unpack `s` base-7 digits and add 1 to each;
+   - `y`: decode `s + 1`, support rank, base descriptor `B`, then unpack `s` base-`B` digits and add 1 to each;
+   - `z`: decode `s + 1`, support rank, base descriptor `B`, then unpack `s` base-`B` digits and apply the inverse ZigZag map;
+   - any other marker is invalid.
+5. Reinsert the decoded non-zero coefficients into a length-`W` flat row and split it by ambient-factor ranks.
+
+Decoding a full label then proceeds as follows:
 
 1. split once at `.` if present;
 2. decode ambient factors from left to right until the ambient text is exhausted;
 3. compute the total ambient rank `W`;
 4. if there is no locus part, stop (ambient-only label);
 5. count the number of `-` characters in the locus part:
-   - if 0, proceed to step 6 (zero-locus path);
-   - if 2, proceed to step 13 (degeneracy-locus path);
-   - otherwise, reject the label;
-6. **(zero locus)** read one character from the bundle text;
-7. if that character has Base62 value `1`, set `signed = true` and read the next character as the start of the base descriptor; otherwise set `signed = false` and treat the character already read as the start of the base descriptor;
-8. decode the base descriptor:
-   - if its first character has Base62 value `0`, read one character for `base_len`, validate that `base_len` is positive, then read `base_len` characters and decode them as `B`; validate that `B >= 62`;
-   - otherwise decode the character directly as `B` and validate `2 <= B <= 61`;
-9. determine the width of the value field from `B` and `W`;
-10. decode the packed integer `v`;
-11. unpack `v` into `W` base-`B` digits; validate that no remainder remains after the `W` digits are extracted, equivalently that `0 <= v < B^W`;
-12. if `signed = true`, apply the inverse ZigZag map of §8.1.2 to those digits to recover the original coefficients; then split the resulting coefficient sequence by ambient-factor ranks to recover one bundle summand row; repeat from step 6 until the locus text is exhausted;
-13. **(degeneracy locus)** split the locus part at the two `-` characters to obtain `E_text`, `F_text`, and `k_text`;
-14. validate that all three segments are non-empty;
-15. decode `E_text` as a bundle (steps 6–12 applied to `E_text`), yielding the summands of $E$;
-16. decode `F_text` as a bundle (steps 6–12 applied to `F_text`), yielding the summands of $F$;
-17. decode `k_text` as a non-negative integer: interpret the string as a big-endian base-62 numeral; validate that there are no leading zeros (unless $k = 0$ and the string is exactly `0`);
-18. return the factors, $E$ summands, $F$ summands, and $k$.
+   - if 0, repeatedly decode bundle rows until the bundle text is exhausted;
+   - if 2, split the locus part into `E_text`, `F_text`, and `k_text`, decode `E_text` and `F_text` as bundles, and decode `k_text` as the non-negative integer rank bound;
+   - otherwise, reject the label.
 
 ## 10. Validation requirements
 
 An implementation MUST reject at least the following malformed conditions:
 
-- any non-Base62 character in a data field (ambient, mask, rank, value, or base);
+- any non-Base62 character in a data field (ambient, mask, rank, descriptor, support rank, packed value, or rank bound);
 - more than one `.` separator in a label;
 - empty ambient text;
 - a trailing separator with no locus text;
@@ -467,84 +495,73 @@ An implementation MUST reject at least the following malformed conditions:
 - truncated escaped rank characters;
 - truncated mask characters;
 - a decoded mask outside the valid range `1 <= mask < 2^rank`;
-- a direct bundle base descriptor outside the range `2..61`;
-- a signed-row marker not followed by a valid base descriptor;
-- an escaped bundle base with a non-positive base length;
-- an escaped bundle base whose shortest representation would require more than 61 characters;
-- truncated escaped base characters;
-- an escaped bundle base with decoded value less than 62;
-- a truncated summand field;
-- a packed summand value `v` with `v >= B^W` (equivalently, a non-zero remainder after extracting `W` base-`B` coefficients);
+- a truncated row descriptor, support-rank field, base descriptor, or packed value field;
+- a support size outside the range `0 .. W`;
+- a decoded support rank outside the valid range for `binomial(W, s)`;
+- a generic row base smaller than 2;
+- a packed row value outside the advertised range (equivalently, a non-zero remainder after extracting the prescribed digits);
 - a summand row whose decoded coefficient vector does not match the ambient structure (encoder-side obligation);
 - an attempt to encode a zero locus with zero summands; the empty-bundle case MUST be represented by the ambient-only form instead;
 - a locus part containing any number of `-` characters other than 0 or 2;
 - a degeneracy locus with an empty `E`, `F`, or `k` segment;
 - a rank bound `k` with leading zeros (a multi-character `k` whose first character has Base62 value 0);
-- a label that is not in canonical form: after decoding a label into its structured representation, re-encoding MUST reproduce the original label byte for byte. This check implicitly rejects non-minimal encodings such as standard factors encoded in escape form, overlong rank fields, non-sorted summand order, and ambient-factor orders that do not match the canonical graph certificate of §6.
+- a label that is not in canonical form: after decoding a label into its structured representation, re-encoding MUST reproduce the original label byte for byte. This check implicitly rejects non-minimal encodings such as standard factors encoded in escape form, overlong descriptors, non-sorted summand order, and ambient-factor orders that do not match the canonical graph certificate of §6.
 
 ## 11. Worked examples
 
 ### 11.1 Zero locus examples
 
-| Object                                                                  | Bundle                                     | Label      |
-| ----------------------------------------------------------------------- | ------------------------------------------ | ---------- |
-| $\mathbb{P}^1 = \mathrm{A}_1 / \mathrm{P}_1$                            | ambient only                               | `1`        |
-| $\mathbb{P}^1$                                                          | $\mathcal{O}(1)$                           | `1.21`     |
-| $\mathbb{P}^1$                                                          | $\mathcal{O}(-1)$                          | `1.121`    |
-| $\mathbb{P}^1$                                                          | $\mathcal{O} \oplus \mathcal{O}(1)$        | `1.2021`   |
-| $\mathbb{P}^1$                                                          | $\mathcal{O}(1) \oplus \mathcal{O}(1)$     | `1.2121`   |
-| $\mathbb{P}^3 = \mathrm{A}_3 / \mathrm{P}_1$                            | ambient only                               | `30`       |
-| $\mathbb{P}^3$                                                          | $\mathcal{O}(1)$                           | `30.24`    |
-| $\mathbb{P}^3$                                                          | $\mathcal{O}(-1)$                          | `30.124`   |
-| $\mathbb{P}^3$                                                          | $\mathcal{O}(1) \oplus \mathcal{O}(0,0,1)$ | `30.2124`  |
-| $\mathrm{Gr}(2,4) = \mathrm{A}_3 / \mathrm{P}_2$                        | ambient only                               | `31`       |
-| $\mathrm{Gr}(2,4)$                                                      | weight $(1,0,0)$                           | `31.24`    |
-| $\mathrm{Gr}(3,6) = \mathrm{A}_5 / \mathrm{P}_3$                        | ambient only                               | `53`       |
-| $\mathrm{Fl}(1,3,4) = \mathrm{A}_3 / \mathrm{P}_{\{1,3\}}$              | ambient only                               | `34`       |
-| $\mathrm{Q}^5 = \mathrm{B}_3 / \mathrm{P}_1$                            | ambient only                               | `H0`       |
-| $\mathrm{Q}^5$                                                          | weight $(1,0,0)$                           | `H0.24`    |
-| $\mathrm{B}_5 / \mathrm{B} = \mathrm{B}_5 / \mathrm{P}_{\{1,2,3,4,5\}}$ | ambient only                               | `JU`       |
-| $\mathrm{OGr}^{+}(5,10) = \mathrm{D}_5 / \mathrm{P}_5$                  | ambient only                               | `iF`       |
-| $\mathrm{Freudenthal\ variety} = \mathrm{E}_7 / \mathrm{P}_7$           | ambient only                               | `u11`      |
-| $\mathrm{A}_{15} / \mathrm{P}_1$                                        | ambient only                               | `F000`     |
-| $\mathrm{A}_{16} / \mathrm{P}_1$                                        | ambient only                               | `0A1G000`  |
-| $\mathrm{A}_{17} / \mathrm{P}_1$                                        | ambient only                               | `0A1H000`  |
-| $(\mathbb{P}^1)^5$                                                      | $\mathcal{O}(1,1,1,1,1)$                   | `11111.2V` |
-| $\mathbb{P}^1 \times \mathbb{P}^1$                                      | $\mathcal{O}(1,1)$                         | `11.23`    |
-| $\mathbb{P}^1 \times \mathbb{P}^1$                                      | $\mathcal{O}(1,0) \oplus \mathcal{O}(0,1)$ | `11.2122`  |
+| Object                                                                  | Bundle                                     | Label            |
+| ----------------------------------------------------------------------- | ------------------------------------------ | ---------------- |
+| $\mathbb{P}^1 = \mathrm{A}_1 / \mathrm{P}_1$                            | ambient only                               | `1`              |
+| $\mathbb{P}^1$                                                          | $\mathcal{O}(1)$                           | `1.0`            |
+| $\mathbb{P}^1$                                                          | $\mathcal{O}(-1)$                          | `1.z220`         |
+| $\mathbb{P}^1$                                                          | $\mathcal{O} \oplus \mathcal{O}(1)$        | `1.0x1`          |
+| $\mathbb{P}^1$                                                          | $\mathcal{O}(1) \oplus \mathcal{O}(1)$     | `1.00`           |
+| $\mathbb{P}^3 = \mathrm{A}_3 / \mathrm{P}_1$                            | ambient only                               | `30`             |
+| $\mathbb{P}^3$                                                          | $\mathcal{O}(1)$                           | `30.0`           |
+| $\mathbb{P}^3$                                                          | $\mathcal{O}(-1)$                          | `30.z2020`       |
+| $\mathbb{P}^3$                                                          | $\mathcal{O}(1) \oplus \mathcal{O}(0,0,1)$ | `30.02`          |
+| $\mathrm{Gr}(2,4) = \mathrm{A}_3 / \mathrm{P}_2$                        | ambient only                               | `31`             |
+| $\mathrm{Gr}(2,4)$                                                      | weight $(1,0,0)$                           | `31.0`           |
+| $\mathrm{Gr}(3,6) = \mathrm{A}_5 / \mathrm{P}_3$                        | ambient only                               | `53`             |
+| $\mathrm{Fl}(1,3,4) = \mathrm{A}_3 / \mathrm{P}_{\{1,3\}}$              | ambient only                               | `34`             |
+| $\mathrm{Q}^5 = \mathrm{B}_3 / \mathrm{P}_1$                            | ambient only                               | `H0`             |
+| $\mathrm{Q}^5$                                                          | weight $(1,0,0)$                           | `H0.0`           |
+| $\mathrm{B}_5 / \mathrm{B} = \mathrm{B}_5 / \mathrm{P}_{\{1,2,3,4,5\}}$ | ambient only                               | `JU`             |
+| $\mathrm{OGr}^{+}(5,10) = \mathrm{D}_5 / \mathrm{P}_5$                  | ambient only                               | `iF`             |
+| $\mathrm{Freudenthal\ variety} = \mathrm{E}_7 / \mathrm{P}_7$           | ambient only                               | `u11`            |
+| $\mathrm{A}_{15} / \mathrm{P}_1$                                        | ambient only                               | `F000`           |
+| $\mathrm{A}_{16} / \mathrm{P}_1$                                        | ambient only                               | `0A1G000`        |
+| $\mathrm{A}_{17} / \mathrm{P}_1$                                        | ambient only                               | `0A1H000`        |
+| $(\mathbb{P}^1)^5$                                                      | $\mathcal{O}(1,1,1,1,1)$                   | `11111.x6000`    |
+| $\mathbb{P}^1 \times \mathbb{P}^1$                                      | $\mathcal{O}(1,1)$                         | `11.E`           |
+| $\mathbb{P}^1 \times \mathbb{P}^1$                                      | $\mathcal{O}(1,0) \oplus \mathcal{O}(0,1)$ | `11.01`          |
 
-Two direct-sum examples deserve special emphasis.
+### 11.2 Representative row modes
 
-For `P^1`, the bundle `O \oplus O(1)` has row encodings `20` and `21`, so the locus part is `2021` and the full label is `1.2021`.
+| Row type | Example bundle row | Full label |
+| -------- | ------------------ | ---------- |
+| direct small-single | $\mathcal{O}(1)$ on $\mathbb{P}^1$ | `1.0` |
+| direct pair | $\mathcal{O}(1,1)$ on $\mathbb{P}^1 \times \mathbb{P}^1$ | `11.E` |
+| small positive sparse (`x`) | $\mathcal{O}(1,1,1,1,1)$ on $(\mathbb{P}^1)^5$ | `11111.x6000` |
+| generic signed sparse (`z`) | $\mathcal{O}(-1)$ on $\mathbb{P}^1$ | `1.z220` |
 
-For `P^1 x P^1`, the bundle `O(1,0) \oplus O(0,1)` has row encodings `22` and `21`, which sort to `21`, `22`, giving the full label `11.2122`.
+The examples
 
-### 11.2 Examples where v2.2 differs from v2.1
-
-Because v2.2 changes only the canonicalization rule and not the wire syntax, the easiest way to see the difference is to compare labels for the same bundle.
-
-| Object             | Bundle                                              | v2.1 label   | v2.2 label   |
-| ------------------ | --------------------------------------------------- | ------------ | ------------ |
-| $(\mathbb{P}^1)^3$ | $\mathcal{O}(0,0,1) \oplus \mathcal{O}(0,2,0)$      | `111.2136`   | `111.2232`   |
-| $(\mathbb{P}^1)^3$ | $\mathcal{O}(-1,-1,-1) \oplus \mathcal{O}(-1,-1,0)$ | `111.123127` | `111.126127` |
-
-Under v2.1 these labels were obtained by minimizing the sorted tuple of encoded summand rows over all equal-factor permutations. Under v2.2 they are obtained from the canonical graph certificate of §6.3, and the resulting canonical ambient order can differ.
+- `1.0` and `30.0` show that a small positive singleton can collapse to one character independent of ambient type;
+- `11.E` shows the dedicated two-sparse all-ones direct table;
+- `11111.x6000` shows the `x` mode, where the support and the base-7 packed values are written explicitly but no separate base descriptor is needed;
+- `1.z220` shows the generic signed sparse mode.
 
 ### 11.3 Degeneracy locus examples
 
 | Object                             | $E$                                    | $F$                | $k$ | Label          |
 | ---------------------------------- | -------------------------------------- | ------------------ | --- | -------------- |
-| $\mathbb{P}^1$                     | $\mathcal{O}(1)$                       | $\mathcal{O}(1)$   | 0   | `1.21-21-0`    |
-| $\mathbb{P}^1$                     | $\mathcal{O}(-1)$                      | $\mathcal{O}(1)$   | 0   | `1.121-21-0`   |
-| $\mathbb{P}^1 \times \mathbb{P}^1$ | $\mathcal{O}(1,0)$                     | $\mathcal{O}(0,1)$ | 0   | `11.21-22-0`   |
-| $\mathbb{P}^3$                     | $\mathcal{O}(1) \oplus \mathcal{O}(1)$ | $\mathcal{O}(2)$   | 1   | `30.2424-3I-1` |
-
-**Derivation of the third example.** On $\mathbb{P}^3 = \mathrm{A}_3 / \mathrm{P}_1$ (ambient `30`):
-
-- $E = \mathcal{O}(1) \oplus \mathcal{O}(1)$: two summands, each with coefficients $(1, 0, 0)$. Base $B = 2$, $W = 3$, packed value $v = 1 \cdot 4 + 0 \cdot 2 + 0 = 4$. Width: smallest $k \ge 1$ with $62^k \ge 2^3 = 8$, so $k = 1$. Value character: `4`. Each summand row encodes as `24`. Sorted: `24`, `24`. Concatenated: `2424`.
-- $F = \mathcal{O}(2)$: one summand with coefficients $(2, 0, 0)$. Base $B = 3$, packed value $v = 2 \cdot 9 + 0 \cdot 3 + 0 = 18$. Width: $62^1 \ge 3^3 = 27$, so $k = 1$. Value character: encode $18$ in 1 character = `I`. Summand encodes as `3I`.
-- $k = 1$ encodes as `1`.
-- Label: `30.2424-3I-1`.
+| $\mathbb{P}^1$                     | $\mathcal{O}(1)$                       | $\mathcal{O}(1)$   | 0   | `1.0-0-0`      |
+| $\mathbb{P}^1$                     | $\mathcal{O}(-1)$                      | $\mathcal{O}(1)$   | 0   | `1.z220-0-0`   |
+| $\mathbb{P}^1 \times \mathbb{P}^1$ | $\mathcal{O}(1,0)$                     | $\mathcal{O}(0,1)$ | 0   | `11.1-0-0`     |
+| $\mathbb{P}^3$                     | $\mathcal{O}(1) \oplus \mathcal{O}(1)$ | $\mathcal{O}(2)$   | 1   | `30.00-3-1`    |
 
 ## 12. Version history
 
@@ -553,3 +570,4 @@ Under v2.1 these labels were obtained by minimizing the sorted tuple of encoded 
 - **v2.0** — Extended the format to encode degeneracy loci. A label may now specify two bundles $E$ and $F$ and a non-negative integer rank bound $k$, using `-` as an intra-locus separator (`<ambient>.<bundle_E>-<bundle_F>-<k>`). Labels containing `-` are reliably rejected by v1.1 decoders. The ambient-only and zero-locus forms are unchanged from v1.1.
 - **v2.1** — Added signed bundle coefficients. A summand row with at least one negative coefficient is encoded with the signed-row marker `1` followed by the usual base descriptor and packed ZigZag-transformed digits. Because v2.0 decoders rejected `1` as a bundle base character, signed-row labels are reliably rejected by v2.0 decoders.
 - **v2.2** — Replaced the v2.1 equal-factor permutation minimum by the graph-certificate canonicalization rule of §6. This change requires no new syntax and no external canonization tool, but it does change some canonical labels relative to v2.1.
+- **v3** — Replaced the old dense/base-descriptor bundle-row encoding by the sparse row codec of §8. The ambient encoding, label syntax, and graph-certificate canonicalization are unchanged, but bundle rows now optimize for sparse supports with small positive values.

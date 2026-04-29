@@ -2,7 +2,7 @@
 
 newPackage(
     "ZeroLocus62",
-    Version => "2.2.0",
+    Version => "3.0.0",
     Date => "April 24, 2026",
     Authors => {
         {Name => "Pieter Belmans", Email => "pieterbelmans@gmail.com"}},
@@ -27,6 +27,12 @@ sepValue = "."
 locusSepValue = "-"
 escapeValue = base62Value#0
 signedBaseMarkerValue = base62Value#1
+positiveSparseMarkerValue = base62Value#60
+signedSparseMarkerValue = base62Value#61
+maxSmallValue = 7
+directRowCapacityValue = 58
+smallPairMarkerValue = base62Value#58
+smallPositiveMarkerValue = base62Value#59
 typeOrder = {"A", "B", "C", "D", "E", "F", "G"}
 
 makeTypeTable = () -> (
@@ -262,7 +268,7 @@ decodeFactor = (text, position) -> (
     )
 
 -------------------------------------------------------------------------
--- Bundle-row packing, including signed rows in v2.2.
+-- Bundle-row packing for the v3 sparse row codec.
 -------------------------------------------------------------------------
 
 normalizeSummands = (summands, ambientFactors) -> (
@@ -297,19 +303,100 @@ normalizeSummands = (summands, ambientFactors) -> (
 zigZagEncode = value -> if value >= 0 then 2 * value else -2 * value - 1
 zigZagDecode = value -> if value % 2 == 0 then value // 2 else -(value // 2) - 1
 
-rowDigits = row -> (
-    digits := {};
-    signed := false;
+encodeDescriptor = value -> (
+    if value <= 0 then error "descriptor must be positive";
+    if value <= 61 then return toString(base62Value#value);
 
-    for weights in row do for coefficient in weights do (
-        if coefficient < 0 then signed = true;
-        digits = append(digits, coefficient);
+    characters := encodeNatural value;
+    if #characters > 61 then error "descriptor length exceeds hard limit";
+
+    toString escapeValue | encodeCharacters(#characters, 1) | characters
+    )
+
+decodeDescriptor = (text, position, name) -> (
+    if position >= #text then error("unexpected end decoding " | name);
+
+    lead := text#position;
+    if not (base62Index#?lead) then
+        error("invalid Base62 character in " | name | " " | toString lead);
+
+    leadValue := base62Index#lead;
+    if leadValue =!= 0 then return {leadValue, position + 1};
+
+    if position + 2 > #text then error(name | " truncated");
+
+    width := decodeCharacters(toString(text#(position + 1)));
+    if width <= 0 then error(name | " length must be positive");
+
+    start := position + 2;
+    if start + width > #text then error(name | " truncated");
+
+    value := decodeCharacters(substring(text, start, width));
+    if value <= 61 then error("escaped " | name | " must be at least 62");
+
+    {value, start + width}
+    )
+
+statesWidth = states -> (
+    width := 0;
+    capacity := 1;
+
+    while capacity < states do (
+        width = width + 1;
+        capacity = capacity * 62;
         );
 
-    if signed
-    then {true, apply(digits, zigZagEncode)}
-    else {false, digits}
+    width
     )
+
+rankSupport = (totalDynkinRank, positions) -> (
+    rank := 0;
+    previous := -1;
+    count := #positions;
+
+    for index from 0 to count - 1 do (
+        position := positions#index;
+        for candidate from previous + 1 to position - 1 do
+            rank = rank + binomial(totalDynkinRank - 1 - candidate, count - 1 - index);
+        previous = position;
+        );
+
+    rank
+    )
+
+unrankSupport = (totalDynkinRank, count, rankInput) -> (
+    if count < 0 or count > totalDynkinRank then error "support size out of range";
+
+    positions := {};
+    nextMin := 0;
+    remainingRank := rankInput;
+
+    for index from 0 to count - 1 do (
+        found := false;
+        for position from nextMin to totalDynkinRank - 1 do (
+            block := binomial(totalDynkinRank - 1 - position, count - 1 - index);
+            if remainingRank < block then (
+                positions = append(positions, position);
+                nextMin = position + 1;
+                found = true;
+                break;
+                );
+            remainingRank = remainingRank - block;
+            );
+        if not found then error "support rank out of range";
+        );
+
+    if remainingRank =!= 0 then error "support rank out of range";
+    positions
+    )
+
+signedDigit = value -> (
+    if value == 0 then error "signed sparse rows encode only non-zero values";
+    zigZagEncode(value) - 1
+    )
+
+decodeSignedDigit = value -> zigZagDecode(value + 1)
+directSmallLimit = totalDynkinRank -> min(maxSmallValue, directRowCapacityValue // totalDynkinRank)
 
 rowValue = (digits, base) -> (
     value := 0;
@@ -319,42 +406,112 @@ rowValue = (digits, base) -> (
     value
     )
 
-summandWidth = (totalDynkinRank, base) -> (
-    if base < 2 then error "bundle base must be at least 2";
+unpackDigits = (value, base, count) -> (
+    remaining := value;
+    digits := {};
 
-    width := 1;
-    capacity := 62;
-
-    while capacity < base^totalDynkinRank do (
-        width = width + 1;
-        capacity = capacity * 62;
+    for i from 0 to count - 1 do (
+        digits = prepend(remaining % base, digits);
+        remaining = remaining // base;
         );
 
-    width
+    if remaining =!= 0 then error "packed value exceeds range";
+    digits
+    )
+
+splitFlatRow = (flatCoefficients, ambientFactors) -> (
+    row := {};
+    offset := 0;
+
+    for ambientFactor in ambientFactors do (
+        row = append(row, flatCoefficients_{offset .. offset + factorRank ambientFactor - 1});
+        offset = offset + factorRank ambientFactor;
+        );
+
+    row
+    )
+
+assembleFlatRow = (totalDynkinRank, positions, values) -> (
+    apply(totalDynkinRank, index -> (
+        hit := null;
+        for i from 0 to #positions - 1 do (
+            if positions#i == index then (
+                hit = values#i;
+                break;
+                );
+            );
+        if hit === null then 0 else hit
+        ))
     )
 
 encodeSummand = (row, totalDynkinRank) -> (
-    info := rowDigits row;
-    signed := info#0;
-    digits := info#1;
+    flatCoefficients := {};
+    for weights in row do for coefficient in weights do
+        flatCoefficients = append(flatCoefficients, coefficient);
+
+    positions := {};
+    values := {};
+    for index from 0 to #flatCoefficients - 1 do (
+        if flatCoefficients#index =!= 0 then (
+            positions = append(positions, index);
+            values = append(values, flatCoefficients#index);
+            );
+        );
+
+    supportSize := #positions;
+    smallLimit := directSmallLimit totalDynkinRank;
+    directPairOffset := totalDynkinRank * smallLimit;
+    directPairCapacity := directPairOffset + binomial(totalDynkinRank, 2);
+
+    if supportSize == 1 and 1 <= values#0 and values#0 <= smallLimit then
+        return toString(base62Value#((values#0 - 1) * totalDynkinRank + positions#0));
+
+    if directPairCapacity <= directRowCapacityValue and supportSize == 2 and values == {1, 1} then
+        return toString(base62Value#(directPairOffset + rankSupport(totalDynkinRank, positions)));
+
+    if supportSize == 2 and values == {1, 1} then
+        return toString smallPairMarkerValue |
+            encodeCharacters(rankSupport(totalDynkinRank, positions), statesWidth binomial(totalDynkinRank, 2));
+
+    signed := false;
+    for value in values do if value < 0 then signed = true;
+
+    if not signed and all(values, value -> 1 <= value and value <= maxSmallValue) then (
+        text := toString smallPositiveMarkerValue | encodeDescriptor(supportSize + 1);
+        if supportSize == 0 then return text;
+
+        supportStates := binomial(totalDynkinRank, supportSize);
+        text = text |
+            encodeCharacters(rankSupport(totalDynkinRank, positions), statesWidth supportStates);
+        text = text |
+            encodeCharacters(
+                rowValue(apply(values, value -> value - 1), maxSmallValue),
+                statesWidth(maxSmallValue^supportSize));
+        return text;
+        );
+
+    digits :=
+        if signed
+        then apply(values, signedDigit)
+        else apply(values, value -> value - 1);
+
+    text :=
+        (if signed then toString signedSparseMarkerValue else toString positiveSparseMarkerValue) |
+        encodeDescriptor(supportSize + 1);
+
+    if supportSize == 0 then return text;
+
+    supportStates := binomial(totalDynkinRank, supportSize);
+    text = text |
+        encodeCharacters(rankSupport(totalDynkinRank, positions), statesWidth supportStates);
 
     maxDigit := 1;
     for digit in digits do if digit > maxDigit then maxDigit = digit;
-
     base := max(2, maxDigit + 1);
-    width := summandWidth(totalDynkinRank, base);
-    valueChars := encodeCharacters(rowValue(digits, base), width);
-    prefix := if signed then toString signedBaseMarkerValue else "";
 
-    if base < 62 then return prefix | encodeCharacters(base, 1) | valueChars;
-
-    baseCharacters := encodeNatural base;
-
-    prefix |
-    toString escapeValue |
-    encodeCharacters(#baseCharacters, 1) |
-    baseCharacters |
-    valueChars
+    text = text | encodeDescriptor base;
+    text = text | encodeCharacters(rowValue(digits, base), statesWidth(base^supportSize));
+    text
     )
 
 encodeBundleText = (summands, totalDynkinRank) -> (
@@ -365,80 +522,145 @@ encodeBundleText = (summands, totalDynkinRank) -> (
     result
     )
 
-decodeBundleBase = (bundleText, position) -> (
-    if position >= #bundleText then error "unexpected end decoding bundle base";
-
-    baseCharacter := bundleText#position;
-    if not (base62Index#?baseCharacter) then
-        error("invalid bundle base character " | toString baseCharacter);
-
-    baseValue := base62Index#baseCharacter;
-
-    if baseValue == 0 then (
-        if position + 2 > #bundleText then error "escaped base truncated";
-
-        baseLen := decodeCharacters(toString(bundleText#(position + 1)));
-        if baseLen <= 0 then error "escaped base length must be positive";
-
-        baseStart := position + 2;
-        if baseStart + baseLen > #bundleText then error "escaped base truncated";
-
-        base := decodeCharacters(substring(bundleText, baseStart, baseLen));
-        if base < 62 then error "escaped base must be at least 62";
-
-        return {base, baseStart + baseLen};
-        );
-
-    if baseValue == 1 then error "bundle base character 1 is reserved";
-
-    {baseValue, position + 1}
-    )
-
 decodeBundleText = (bundleText, ambientFactors, totalDynkinRank) -> (
     summands := {};
     position := 0;
+    smallLimit := directSmallLimit totalDynkinRank;
+    directPairOffset := totalDynkinRank * smallLimit;
+    directPairCapacity := directPairOffset + binomial(totalDynkinRank, 2);
 
     while position < #bundleText do (
-        signed := false;
+        lead := bundleText#position;
+        if not (base62Index#?lead) then
+            error("invalid bundle row lead character " | toString lead);
 
-        if bundleText#position == signedBaseMarkerValue then (
-            signed = true;
+        leadValue := base62Index#lead;
+        if smallLimit > 0 and leadValue < directPairOffset then (
+            flatCoefficients := assembleFlatRow(
+                totalDynkinRank,
+                {leadValue % totalDynkinRank},
+                {leadValue // totalDynkinRank + 1});
             position = position + 1;
+            summands = append(summands, splitFlatRow(flatCoefficients, ambientFactors));
+            continue;
             );
 
-        baseInfo := decodeBundleBase(bundleText, position);
+        if directPairCapacity <= directRowCapacityValue and
+           directPairOffset <= leadValue and leadValue < directPairCapacity then (
+            supportPositions := unrankSupport(totalDynkinRank, 2, leadValue - directPairOffset);
+            flatCoefficients := assembleFlatRow(totalDynkinRank, supportPositions, {1, 1});
+            position = position + 1;
+            summands = append(summands, splitFlatRow(flatCoefficients, ambientFactors));
+            continue;
+            );
+
+        if lead == smallPairMarkerValue then (
+            position = position + 1;
+            supportWidth := statesWidth binomial(totalDynkinRank, 2);
+            if position + supportWidth > #bundleText then error "pair support rank truncated";
+            supportRank :=
+                if supportWidth == 0
+                then 0
+                else decodeCharacters(substring(bundleText, position, supportWidth));
+            supportPositions := unrankSupport(totalDynkinRank, 2, supportRank);
+            flatCoefficients := assembleFlatRow(totalDynkinRank, supportPositions, {1, 1});
+            position = position + supportWidth;
+            summands = append(summands, splitFlatRow(flatCoefficients, ambientFactors));
+            continue;
+            );
+
+        if lead == smallPositiveMarkerValue then (
+            position = position + 1;
+            supportInfo := decodeDescriptor(bundleText, position, "support size");
+            supportSize := supportInfo#0 - 1;
+            position = supportInfo#1;
+
+            if supportSize < 0 or supportSize > totalDynkinRank then
+                error "support size out of range";
+
+            if supportSize == 0 then (
+                flatCoefficients := apply(totalDynkinRank, i -> 0);
+                summands = append(summands, splitFlatRow(flatCoefficients, ambientFactors));
+                continue;
+                );
+
+            supportWidth := statesWidth binomial(totalDynkinRank, supportSize);
+            if position + supportWidth > #bundleText then error "support rank truncated";
+            supportRank :=
+                if supportWidth == 0
+                then 0
+                else decodeCharacters(substring(bundleText, position, supportWidth));
+            position = position + supportWidth;
+
+            supportPositions := unrankSupport(totalDynkinRank, supportSize, supportRank);
+
+            valueWidth := statesWidth(maxSmallValue^supportSize);
+            if position + valueWidth > #bundleText then error "value payload truncated";
+            digits :=
+                unpackDigits(
+                    if valueWidth == 0 then 0 else decodeCharacters(substring(bundleText, position, valueWidth)),
+                    maxSmallValue,
+                    supportSize);
+            position = position + valueWidth;
+
+            values := apply(digits, digit -> digit + 1);
+            flatCoefficients := assembleFlatRow(totalDynkinRank, supportPositions, values);
+            summands = append(summands, splitFlatRow(flatCoefficients, ambientFactors));
+            continue;
+            );
+
+        if lead =!= positiveSparseMarkerValue and lead =!= signedSparseMarkerValue then
+            error("invalid bundle row lead character " | toString lead);
+
+        signed := lead == signedSparseMarkerValue;
+        position = position + 1;
+
+        supportInfo := decodeDescriptor(bundleText, position, "support size");
+        supportSize := supportInfo#0 - 1;
+        position = supportInfo#1;
+
+        if supportSize < 0 or supportSize > totalDynkinRank then
+            error "support size out of range";
+
+        if supportSize == 0 then (
+            flatCoefficients := apply(totalDynkinRank, i -> 0);
+            summands = append(summands, splitFlatRow(flatCoefficients, ambientFactors));
+            continue;
+            );
+
+        supportWidth := statesWidth binomial(totalDynkinRank, supportSize);
+        if position + supportWidth > #bundleText then error "support rank truncated";
+        supportRank :=
+            if supportWidth == 0
+            then 0
+            else decodeCharacters(substring(bundleText, position, supportWidth));
+        if supportRank >= binomial(totalDynkinRank, supportSize) then
+            error "support rank out of range";
+        position = position + supportWidth;
+
+        supportPositions := unrankSupport(totalDynkinRank, supportSize, supportRank);
+
+        baseInfo := decodeDescriptor(bundleText, position, "value base");
         base := baseInfo#0;
         position = baseInfo#1;
+        if base < 2 then error "value base must be at least 2";
 
-        width := summandWidth(totalDynkinRank, base);
-        if position + width > #bundleText then error "summand truncated";
+        valueWidth := statesWidth(base^supportSize);
+        if position + valueWidth > #bundleText then error "value payload truncated";
+        digits :=
+            unpackDigits(
+                if valueWidth == 0 then 0 else decodeCharacters(substring(bundleText, position, valueWidth)),
+                base,
+                supportSize);
+        position = position + valueWidth;
 
-        value := decodeCharacters(substring(bundleText, position, width));
-        position = position + width;
+        values :=
+            if signed
+            then apply(digits, decodeSignedDigit)
+            else apply(digits, digit -> digit + 1);
 
-        flatDigits := {};
-        for i from 0 to totalDynkinRank - 1 do (
-            flatDigits = prepend(value % base, flatDigits);
-            value = value // base;
-            );
-
-        if value =!= 0 then error "packed value exceeds range";
-        if signed then flatDigits = apply(flatDigits, zigZagDecode);
-
-        row := {};
-        offset := 0;
-
-        for ambientFactor in ambientFactors do (
-            weights := {};
-
-            for j from 0 to factorRank(ambientFactor) - 1 do
-                weights = append(weights, flatDigits#(offset + j));
-
-            row = append(row, weights);
-            offset = offset + factorRank ambientFactor;
-            );
-
-        summands = append(summands, row);
+        flatCoefficients := assembleFlatRow(totalDynkinRank, supportPositions, values);
+        summands = append(summands, splitFlatRow(flatCoefficients, ambientFactors));
         );
 
     summands
@@ -495,7 +717,7 @@ sortRows = (rows, totalDynkinRank) -> (
     )
 
 -------------------------------------------------------------------------
--- Graph-style canonicalization (v2.2).
+-- Graph-style canonicalization retained in v3.
 -------------------------------------------------------------------------
 
 serializeWeights = weights -> (
@@ -873,43 +1095,43 @@ Node
    ZeroLocus62 label codec for flag-variety bundles
   Description
    Text
-    The package implements the ZeroLocus62 v2.2 wire format, including signed
-    bundle coefficients, canonicalization, and degeneracy loci.
+    The package implements the ZeroLocus62 v3 wire format, including sparse
+    bundle rows, canonicalization, and degeneracy loci.
 ///
 
 TEST ///
     demoFactor = Factor("A", 1, 1);
 
     assert( markedNodes demoFactor == {1} );
-    assert( encodeLabel({demoFactor}, {{{1}}}) == "1.21" );
+    assert( encodeLabel({demoFactor}, {{{1}}}) == "1.0" );
 ///
 
 TEST ///
     demoFactor = Factor("A", 1, 1);
-    decodedNegative = decodeLabel "1.121";
+    decodedNegative = decodeLabel "1.z220";
 
-    assert( encodeLabel({demoFactor}, {{{-1}}}) == "1.121" );
+    assert( encodeLabel({demoFactor}, {{{-1}}}) == "1.z220" );
     assert( decodedNegative#"summands" == {{{-1}}} );
 ///
 
 TEST ///
     demoFactors = {Factor("A", 1, 1), Factor("A", 1, 1)};
 
-    assert( encodeLabel(demoFactors, {{{0}, {-1}}, {{-1}, {0}}}) == "11.121122" );
+    assert( encodeLabel(demoFactors, {{{0}, {-1}}, {{-1}, {0}}}) == "11.z2020z2120" );
 ///
 
 TEST ///
     demoFactor = Factor("A", 1, 1);
-    decodedDegeneracy = decodeLabel "1.121-21-0";
+    decodedDegeneracy = decodeLabel "1.z220-0-0";
 
-    assert( encodeLabel({demoFactor}, {{{-1}}}, {{{1}}}, 0) == "1.121-21-0" );
+    assert( encodeLabel({demoFactor}, {{{-1}}}, {{{1}}}, 0) == "1.z220-0-0" );
     assert( decodedDegeneracy#"k" == 0 );
     assert( decodedDegeneracy#"summands_e" == {{{-1}}} );
 ///
 
 TEST ///
-    assert( isCanonical "1.121" );
-    assert( not isCanonical "11.122121" );
+    assert( isCanonical "1.z220" );
+    assert( not isCanonical "11.z2120z2020" );
 ///
 
 end--

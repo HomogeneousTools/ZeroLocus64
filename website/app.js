@@ -18,23 +18,23 @@ import {
 
 const EXAMPLES = [
   { label: "1", caption: "P^1 ambient" },
-  { label: "30.24", caption: "A3 / P1 with O(1)" },
-  { label: "1.121", caption: "P^1 with O(-1)" },
-  { label: "H0.24", caption: "B3 / P1 with weight (1,0,0)" },
-  { label: "11.2122", caption: "split bundle on P^1 x P^1" },
-  { label: "11111.2V", caption: "(P^1)^5 diagonal" },
+  { label: "30.0", caption: "A3 / P1 with O(1)" },
+  { label: "1.z220", caption: "P^1 with O(-1)" },
+  { label: "H0.0", caption: "B3 / P1 with weight (1,0,0)" },
+  { label: "11.01", caption: "split bundle on P^1 x P^1" },
+  { label: "11111.x6000", caption: "(P^1)^5 diagonal" },
   { label: "iF", caption: "D5 / P5" },
   { label: "u11", caption: "E7 / P7" },
   { label: "0A1H000", caption: "A17 / P1" },
-  { label: "1120.252A", caption: "equal-factor block" },
-  { label: "112020.20M20f", caption: "two equal blocks" },
-  { label: "20H0U0.21c", caption: "mixed standard types" },
-  { label: "131H0.20K212", caption: "mixed product with zero row" },
-  { label: "1.21-21-0", caption: "degeneracy on P^1" },
-  { label: "30.2424-3I-1", caption: "degeneracy on P^3" },
+  { label: "120.M", caption: "equal-factor block" },
+  { label: "111.15", caption: "sparse small-value rows" },
+  { label: "31.0", caption: "Grassmannian weight" },
+  { label: "11.E", caption: "direct pair row" },
+  { label: "1.0-0-0", caption: "degeneracy on P^1" },
+  { label: "30.00-3-1", caption: "degeneracy on P^3" },
 ];
 
-const DEFAULT_LABEL = "H0.24";
+const DEFAULT_LABEL = "H0.0";
 
 const form = document.querySelector("#decoder-form");
 const labelInput = document.querySelector("#label-input");

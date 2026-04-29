@@ -10,7 +10,7 @@ import {
 import { normalizeDecoded } from "./helpers.js";
 
 test("repeated summands remain explicit", () => {
-  assert.equal(encodeLabel([new Factor("A", 1, 1)], [[[1]], [[1]]]), "1.2121");
+  assert.equal(encodeLabel([new Factor("A", 1, 1)], [[[1]], [[1]]]), "1.00");
 });
 
 test("high coefficients choose larger bases", () => {
@@ -24,7 +24,7 @@ test("high coefficients choose larger bases", () => {
 
 test("negative coefficients use signed rows", () => {
   const label = encodeLabel([new Factor("A", 1, 1)], [[[-1]]]);
-  assert.equal(label, "1.121");
+  assert.equal(label, "1.z220");
   assert.deepEqual(
     normalizeDecoded(decodeLabel(label)),
     normalizeDecoded([[new Factor("A", 1, 1)], [[[-1]]]]),
@@ -65,7 +65,7 @@ test("weight vectors must match the Dynkin rank", () => {
   );
 });
 
-for (const label of ["H0.24", "iF", "u11", "0A1H000", "0B1H000"]) {
+for (const label of ["H0.0", "iF", "u11", "0A1H000", "0B1H000"]) {
   test(`non-A and escape example decodes: ${label}`, () => {
     const { factors } = decodeLabel(label);
     assert.ok(factors.length > 0);

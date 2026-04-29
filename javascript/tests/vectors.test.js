@@ -82,5 +82,5 @@ test("corpus length statistics stay compact", () => {
   assert.ok(Number(mean.toFixed(2)) < 17);
   assert.ok(median <= 16);
   assert.ok(percentile90 <= 22);
-  assert.ok(lengths.at(-1) >= 30);
+  assert.ok(lengths.at(-1) >= 20);
 });

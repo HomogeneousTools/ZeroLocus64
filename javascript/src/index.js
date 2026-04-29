@@ -20,6 +20,12 @@ export const TYPE_TABLE = Object.freeze([
 ]);
 
 export const TYPE_CHARS = BASE62.slice(1, 1 + TYPE_TABLE.length);
+export const MAX_SMALL_VALUE = 7;
+export const DIRECT_ROW_CAPACITY = 58;
+export const SMALL_PAIR_MARKER = BASE62[58];
+export const SMALL_POSITIVE_MARKER = BASE62[59];
+export const POSITIVE_SPARSE_MARKER = BASE62[60];
+export const SIGNED_SPARSE_MARKER = BASE62[61];
 
 export const BASE62_INDEX = Object.freeze(
   Object.fromEntries(
@@ -303,21 +309,156 @@ function decodeFactor(text, position) {
   return [new Factor(group, rank, mask), end];
 }
 
-function rowDigits(row) {
-  const digits = [];
-  let signed = false;
-  for (const weights of row) {
-    for (const coefficient of weights) {
-      if (coefficient < 0) {
-        signed = true;
+function encodeDescriptor(value) {
+  const integer = toSafeInteger(value, "descriptor");
+  if (integer <= 0) {
+    throw new RangeError("descriptor must be positive");
+  }
+  if (integer <= 61) {
+    return BASE62[integer];
+  }
+  const characters = encodeNatural(integer);
+  if (characters.length > 61) {
+    throw new RangeError("descriptor length exceeds hard limit");
+  }
+  return ESCAPE + encodeCharacters(characters.length, 1) + characters;
+}
+
+function decodeDescriptor(text, position, name) {
+  if (position >= text.length) {
+    throw new RangeError(`unexpected end decoding ${name}`);
+  }
+  const lead = BASE62_INDEX[text[position]];
+  if (lead === undefined) {
+    throw new RangeError(
+      `invalid Base62 character in ${name} ${JSON.stringify(text[position])}`,
+    );
+  }
+  if (lead !== 0) {
+    return [lead, position + 1];
+  }
+  if (position + 2 > text.length) {
+    throw new RangeError(`${name} truncated`);
+  }
+  const width = Number(decodeCharacters(text[position + 1]));
+  if (width <= 0) {
+    throw new RangeError(`${name} length must be positive`);
+  }
+  const start = position + 2;
+  const end = start + width;
+  if (end > text.length) {
+    throw new RangeError(`${name} truncated`);
+  }
+  const value = toSafeInteger(decodeCharacters(text.slice(start, end)), name);
+  if (value <= 61) {
+    throw new RangeError(`escaped ${name} must be at least 62`);
+  }
+  return [value, end];
+}
+
+function statesWidth(states) {
+  let width = 0;
+  let capacity = 1n;
+  const required = toBigInt(states, "states");
+  while (capacity < required) {
+    width += 1;
+    capacity *= 62n;
+  }
+  return width;
+}
+
+function binomial(n, k) {
+  if (k < 0 || k > n) {
+    return 0n;
+  }
+  let choose = Math.min(k, n - k);
+  let value = 1n;
+  for (let index = 1; index <= choose; index += 1) {
+    value =
+      (value * BigInt(n - choose + index)) /
+      BigInt(index);
+  }
+  return value;
+}
+
+function rankSupport(totalDynkinRank, positions) {
+  let rank = 0n;
+  let previous = -1;
+  for (let index = 0; index < positions.length; index += 1) {
+    const position = positions[index];
+    for (let candidate = previous + 1; candidate < position; candidate += 1) {
+      rank += binomial(
+        totalDynkinRank - 1 - candidate,
+        positions.length - 1 - index,
+      );
+    }
+    previous = position;
+  }
+  return rank;
+}
+
+function unrankSupport(totalDynkinRank, count, rank) {
+  const positions = [];
+  let nextMin = 0;
+  let remainingRank = toBigInt(rank, "support rank");
+  for (let index = 0; index < count; index += 1) {
+    let found = false;
+    for (let position = nextMin; position < totalDynkinRank; position += 1) {
+      const block = binomial(totalDynkinRank - 1 - position, count - 1 - index);
+      if (remainingRank < block) {
+        positions.push(position);
+        nextMin = position + 1;
+        found = true;
+        break;
       }
-      digits.push(coefficient);
+      remainingRank -= block;
+    }
+    if (!found) {
+      throw new RangeError("support rank out of range");
     }
   }
-  if (!signed) {
-    return [false, digits];
+  if (remainingRank !== 0n) {
+    throw new RangeError("support rank out of range");
   }
-  return [true, digits.map((coefficient) => zigZagEncode(coefficient))];
+  return positions;
+}
+
+function signedDigit(value) {
+  if (value === 0) {
+    throw new RangeError("signed sparse rows encode only non-zero values");
+  }
+  return zigZagEncode(value) - 1;
+}
+
+function decodeSignedDigit(value) {
+  return zigZagDecode(value + 1);
+}
+
+function directSmallLimit(totalDynkinRank, maxSmallValue = MAX_SMALL_VALUE) {
+  return Math.min(maxSmallValue, Math.floor(DIRECT_ROW_CAPACITY / totalDynkinRank));
+}
+
+function unpackDigits(value, base, count) {
+  let remaining = toBigInt(value, "packed value");
+  const digits = Array.from({ length: count }, () => 0);
+  for (let index = count - 1; index >= 0; index -= 1) {
+    digits[index] = Number(remaining % BigInt(base));
+    remaining /= BigInt(base);
+  }
+  if (remaining !== 0n) {
+    throw new RangeError("packed value exceeds range");
+  }
+  return digits;
+}
+
+function splitFlatRow(flatCoefficients, factors) {
+  const row = [];
+  let offset = 0;
+  for (const factor of factors) {
+    row.push(flatCoefficients.slice(offset, offset + factor.rank));
+    offset += factor.rank;
+  }
+  return row;
 }
 
 function rowValue(digits, base) {
@@ -328,37 +469,87 @@ function rowValue(digits, base) {
   return value;
 }
 
-function summandWidth(totalDynkinRank, base) {
-  if (base < 2) {
-    throw new RangeError("bundle base must be at least 2");
-  }
-  let width = 1;
-  let capacity = 62n;
-  const required = BigInt(base) ** BigInt(totalDynkinRank);
-  while (capacity < required) {
-    width += 1;
-    capacity *= 62n;
-  }
-  return width;
-}
-
 function encodeSummand(row, totalDynkinRank) {
-  const [signed, digits] = rowDigits(row);
-  const base = Math.max(2, Math.max(1, ...digits) + 1);
-  const width = summandWidth(totalDynkinRank, base);
-  const valueChars = encodeCharacters(rowValue(digits, base), width);
-  const prefix = signed ? SIGNED_BASE_MARKER : "";
-  if (base < 62) {
-    return prefix + encodeCharacters(base, 1) + valueChars;
+  const flatCoefficients = row.flat();
+  const positions = [];
+  const values = [];
+  for (let index = 0; index < flatCoefficients.length; index += 1) {
+    if (flatCoefficients[index] !== 0) {
+      positions.push(index);
+      values.push(flatCoefficients[index]);
+    }
   }
-  const baseCharacters = encodeNatural(base);
-  return (
-    prefix +
-    ESCAPE +
-    encodeCharacters(baseCharacters.length, 1) +
-    baseCharacters +
-    valueChars
+  const supportSize = positions.length;
+  const smallLimit = directSmallLimit(totalDynkinRank);
+  const directPairOffset = totalDynkinRank * smallLimit;
+  const directPairCapacity =
+    directPairOffset + Number(binomial(totalDynkinRank, 2));
+  if (supportSize === 1 && values[0] >= 1 && values[0] <= smallLimit) {
+    return BASE62[(values[0] - 1) * totalDynkinRank + positions[0]];
+  }
+  if (
+    directPairCapacity <= DIRECT_ROW_CAPACITY &&
+    supportSize === 2 &&
+    values[0] === 1 &&
+    values[1] === 1
+  ) {
+    return BASE62[
+      directPairOffset + Number(rankSupport(totalDynkinRank, positions))
+    ];
+  }
+  if (supportSize === 2 && values[0] === 1 && values[1] === 1) {
+    return (
+      SMALL_PAIR_MARKER +
+      encodeCharacters(
+        rankSupport(totalDynkinRank, positions),
+        statesWidth(binomial(totalDynkinRank, 2)),
+      )
+    );
+  }
+  const signed = values.some((value) => value < 0);
+  if (
+    !signed &&
+    values.every(
+      (value) => value >= 1 && value <= MAX_SMALL_VALUE,
+    )
+  ) {
+    let text = SMALL_POSITIVE_MARKER + encodeDescriptor(supportSize + 1);
+    if (supportSize === 0) {
+      return text;
+    }
+    text += encodeCharacters(
+      rankSupport(totalDynkinRank, positions),
+      statesWidth(binomial(totalDynkinRank, supportSize)),
+    );
+    text += encodeCharacters(
+      rowValue(
+        values.map((value) => value - 1),
+        MAX_SMALL_VALUE,
+      ),
+      statesWidth(BigInt(MAX_SMALL_VALUE) ** BigInt(supportSize)),
+    );
+    return text;
+  }
+  const digits = signed
+    ? values.map((value) => signedDigit(value))
+    : values.map((value) => value - 1);
+  let text =
+    (signed ? SIGNED_SPARSE_MARKER : POSITIVE_SPARSE_MARKER) +
+    encodeDescriptor(supportSize + 1);
+  if (supportSize === 0) {
+    return text;
+  }
+  text += encodeCharacters(
+    rankSupport(totalDynkinRank, positions),
+    statesWidth(binomial(totalDynkinRank, supportSize)),
   );
+  const base = Math.max(2, Math.max(1, ...digits) + 1);
+  text += encodeDescriptor(base);
+  text += encodeCharacters(
+    rowValue(digits, base),
+    statesWidth(BigInt(base) ** BigInt(supportSize)),
+  );
+  return text;
 }
 
 function encodeRankBound(k) {
@@ -402,86 +593,170 @@ function encodeBundleText(summands, totalDynkinRank) {
   return summands.map((row) => encodeSummand(row, totalDynkinRank)).join("");
 }
 
-function decodeBundleBase(bundleText, position) {
-  if (position >= bundleText.length) {
-    throw new RangeError("unexpected end decoding bundle base");
-  }
-  const baseCharacter = bundleText[position];
-  const baseValue = BASE62_INDEX[baseCharacter];
-  if (baseValue === undefined) {
-    throw new RangeError(
-      `invalid bundle base character ${JSON.stringify(baseCharacter)}`,
-    );
-  }
-  if (baseValue === 0) {
-    if (position + 2 > bundleText.length) {
-      throw new RangeError("escaped base truncated");
-    }
-    const baseLen = Number(decodeCharacters(bundleText[position + 1]));
-    if (baseLen <= 0) {
-      throw new RangeError("escaped base length must be positive");
-    }
-    const baseStart = position + 2;
-    const baseEnd = baseStart + baseLen;
-    if (baseEnd > bundleText.length) {
-      throw new RangeError("escaped base truncated");
-    }
-    const base = toSafeInteger(
-      decodeCharacters(bundleText.slice(baseStart, baseEnd)),
-      "escaped base",
-    );
-    if (base < 62) {
-      throw new RangeError("escaped base must be at least 62");
-    }
-    return [base, baseEnd];
-  }
-  if (baseValue === 1) {
-    throw new RangeError("bundle base character 1 is reserved");
-  }
-  return [baseValue, position + 1];
-}
-
 function decodeBundleText(bundleText, factors, totalDynkinRank) {
   const summands = [];
   let position = 0;
+  const smallLimit = directSmallLimit(totalDynkinRank);
+  const directPairOffset = totalDynkinRank * smallLimit;
+  const directPairCapacity =
+    directPairOffset + Number(binomial(totalDynkinRank, 2));
   while (position < bundleText.length) {
-    let signed = false;
-    if (BASE62_INDEX[bundleText[position]] === 1) {
-      signed = true;
+    const lead = bundleText[position];
+    const leadValue = BASE62_INDEX[lead];
+    if (leadValue === undefined) {
+      throw new RangeError(
+        `invalid bundle row lead character ${JSON.stringify(lead)}`,
+      );
+    }
+    if (smallLimit > 0 && leadValue < directPairOffset) {
+      const flatCoefficients = Array.from({ length: totalDynkinRank }, () => 0);
+      flatCoefficients[leadValue % totalDynkinRank] =
+        Math.floor(leadValue / totalDynkinRank) + 1;
       position += 1;
+      summands.push(splitFlatRow(flatCoefficients, factors));
+      continue;
     }
-    let base;
-    [base, position] = decodeBundleBase(bundleText, position);
-    const width = summandWidth(totalDynkinRank, base);
-    const start = position;
-    const end = start + width;
-    if (end > bundleText.length) {
-      throw new RangeError("summand truncated");
-    }
-    let value = decodeCharacters(bundleText.slice(start, end));
-    position = end;
-
-    const flatCoefficients = Array.from({ length: totalDynkinRank }, () => 0);
-    for (let index = totalDynkinRank - 1; index >= 0; index -= 1) {
-      flatCoefficients[index] = Number(value % BigInt(base));
-      value /= BigInt(base);
-    }
-    if (value !== 0n) {
-      throw new RangeError("packed value exceeds range");
-    }
-    if (signed) {
-      for (let index = 0; index < flatCoefficients.length; index += 1) {
-        flatCoefficients[index] = zigZagDecode(flatCoefficients[index]);
+    if (
+      directPairCapacity <= DIRECT_ROW_CAPACITY &&
+      leadValue >= directPairOffset &&
+      leadValue < directPairCapacity
+    ) {
+      const flatCoefficients = Array.from({ length: totalDynkinRank }, () => 0);
+      for (const supportPosition of unrankSupport(
+        totalDynkinRank,
+        2,
+        BigInt(leadValue - directPairOffset),
+      )) {
+        flatCoefficients[supportPosition] = 1;
       }
+      position += 1;
+      summands.push(splitFlatRow(flatCoefficients, factors));
+      continue;
     }
-
-    const row = [];
-    let offset = 0;
-    for (const factor of factors) {
-      row.push(flatCoefficients.slice(offset, offset + factor.rank));
-      offset += factor.rank;
+    if (lead === SMALL_PAIR_MARKER) {
+      position += 1;
+      const supportEnd =
+        position + statesWidth(binomial(totalDynkinRank, 2));
+      if (supportEnd > bundleText.length) {
+        throw new RangeError("pair support rank truncated");
+      }
+      const flatCoefficients = Array.from({ length: totalDynkinRank }, () => 0);
+      for (const supportPosition of unrankSupport(
+        totalDynkinRank,
+        2,
+        decodeCharacters(bundleText.slice(position, supportEnd)),
+      )) {
+        flatCoefficients[supportPosition] = 1;
+      }
+      position = supportEnd;
+      summands.push(splitFlatRow(flatCoefficients, factors));
+      continue;
     }
-    summands.push(row);
+    if (lead === SMALL_POSITIVE_MARKER) {
+      position += 1;
+      let supportSizePlusOne;
+      [supportSizePlusOne, position] = decodeDescriptor(
+        bundleText,
+        position,
+        "support size",
+      );
+      const supportSize = supportSizePlusOne - 1;
+      if (supportSize < 0 || supportSize > totalDynkinRank) {
+        throw new RangeError("support size out of range");
+      }
+      const flatCoefficients = Array.from({ length: totalDynkinRank }, () => 0);
+      if (supportSize === 0) {
+        summands.push(splitFlatRow(flatCoefficients, factors));
+        continue;
+      }
+      const supportEnd =
+        position + statesWidth(binomial(totalDynkinRank, supportSize));
+      if (supportEnd > bundleText.length) {
+        throw new RangeError("support rank truncated");
+      }
+      const supportPositions = unrankSupport(
+        totalDynkinRank,
+        supportSize,
+        decodeCharacters(bundleText.slice(position, supportEnd)),
+      );
+      position = supportEnd;
+      const valueEnd =
+        position + statesWidth(BigInt(MAX_SMALL_VALUE) ** BigInt(supportSize));
+      if (valueEnd > bundleText.length) {
+        throw new RangeError("value payload truncated");
+      }
+      const values = unpackDigits(
+        decodeCharacters(bundleText.slice(position, valueEnd)),
+        MAX_SMALL_VALUE,
+        supportSize,
+      ).map((digit) => digit + 1);
+      position = valueEnd;
+      for (let index = 0; index < supportPositions.length; index += 1) {
+        flatCoefficients[supportPositions[index]] = values[index];
+      }
+      summands.push(splitFlatRow(flatCoefficients, factors));
+      continue;
+    }
+    if (lead !== POSITIVE_SPARSE_MARKER && lead !== SIGNED_SPARSE_MARKER) {
+      throw new RangeError(
+        `invalid bundle row lead character ${JSON.stringify(lead)}`,
+      );
+    }
+    const signed = lead === SIGNED_SPARSE_MARKER;
+    position += 1;
+    let supportSizePlusOne;
+    [supportSizePlusOne, position] = decodeDescriptor(
+      bundleText,
+      position,
+      "support size",
+    );
+    const supportSize = supportSizePlusOne - 1;
+    if (supportSize < 0 || supportSize > totalDynkinRank) {
+      throw new RangeError("support size out of range");
+    }
+    const flatCoefficients = Array.from({ length: totalDynkinRank }, () => 0);
+    if (supportSize === 0) {
+      summands.push(splitFlatRow(flatCoefficients, factors));
+      continue;
+    }
+    const supportWidth = statesWidth(binomial(totalDynkinRank, supportSize));
+    const supportEnd = position + supportWidth;
+    if (supportEnd > bundleText.length) {
+      throw new RangeError("support rank truncated");
+    }
+    const supportRank = decodeCharacters(bundleText.slice(position, supportEnd));
+    if (supportRank >= binomial(totalDynkinRank, supportSize)) {
+      throw new RangeError("support rank out of range");
+    }
+    position = supportEnd;
+    const supportPositions = unrankSupport(
+      totalDynkinRank,
+      supportSize,
+      supportRank,
+    );
+    let base;
+    [base, position] = decodeDescriptor(bundleText, position, "value base");
+    if (base < 2) {
+      throw new RangeError("value base must be at least 2");
+    }
+    const valueWidth = statesWidth(BigInt(base) ** BigInt(supportSize));
+    const valueEnd = position + valueWidth;
+    if (valueEnd > bundleText.length) {
+      throw new RangeError("value payload truncated");
+    }
+    const digits = unpackDigits(
+      decodeCharacters(bundleText.slice(position, valueEnd)),
+      base,
+      supportSize,
+    );
+    position = valueEnd;
+    const values = signed
+      ? digits.map((digit) => decodeSignedDigit(digit))
+      : digits.map((digit) => digit + 1);
+    for (let index = 0; index < supportPositions.length; index += 1) {
+      flatCoefficients[supportPositions[index]] = values[index];
+    }
+    summands.push(splitFlatRow(flatCoefficients, factors));
   }
   return summands;
 }

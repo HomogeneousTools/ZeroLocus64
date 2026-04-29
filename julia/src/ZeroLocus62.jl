@@ -1,9 +1,9 @@
 """
     ZeroLocus62
 
-    Reference Julia implementation of the ZeroLocus62 v2.2 label codec.
+    Reference Julia implementation of the ZeroLocus62 v3 label codec.
 
-This module implements the ZeroLocus62 v2.2 specification using the Base62
+This module implements the ZeroLocus62 v3 specification using the Base62
 alphabet `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`.
 """
 module ZeroLocus62
@@ -37,6 +37,12 @@ const TYPE_CHARS = BASE62_CHARS[2:(1+length(TYPE_TABLE))]
 const TYPE_INDEX = Dict(entry => index for (index, entry) in enumerate(TYPE_TABLE))
 const TYPE_CHAR_INDEX =
     Dict(character => index for (index, character) in enumerate(TYPE_CHARS))
+const MAX_SMALL_VALUE = 7
+const DIRECT_ROW_CAPACITY = 58
+const SMALL_PAIR_MARKER = BASE62_CHARS[59]
+const SMALL_POSITIVE_MARKER = BASE62_CHARS[60]
+const POSITIVE_SPARSE_MARKER = BASE62_CHARS[61]
+const SIGNED_SPARSE_MARKER = BASE62_CHARS[62]
 
 valid_type_rank(group::Char, rank::Int) = (
     (group == 'A' && rank >= 1) ||
@@ -178,13 +184,100 @@ function decode_factor(text::AbstractString, position::Int)
     return Factor(group, rank, mask), stop + 1
 end
 
-row_base(row) = max(
-    2,
-    maximum((coefficient for weights in row for coefficient in weights); init = 1) + 1,
-)
-
 zigzag_encode(value::Int) = value >= 0 ? 2 * value : -2 * value - 1
 zigzag_decode(value::Int) = iseven(value) ? value ÷ 2 : -(value ÷ 2) - 1
+
+function encode_descriptor(value::Int)
+    value > 0 || throw(ArgumentError("descriptor must be positive"))
+    value <= 61 && return string(BASE62_CHARS[value+1])
+    characters = encode_natural(value)
+    length(characters) <= 61 || throw(ArgumentError("descriptor length exceeds hard limit"))
+    return string(ESCAPE, encode_characters(length(characters), 1), characters)
+end
+
+function decode_descriptor(text::AbstractString, position::Int, name::AbstractString)
+    position <= lastindex(text) || throw(ArgumentError("unexpected end decoding $(name)"))
+    lead = get(BASE62_INDEX, text[position], -1)
+    lead >= 0 ||
+        throw(ArgumentError("invalid Base62 character in $(name) $(repr(text[position]))"))
+    lead != 0 && return lead, position + 1
+    position + 1 <= lastindex(text) || throw(ArgumentError("$(name) truncated"))
+    width = Int(decode_characters(string(text[position+1])))
+    width > 0 || throw(ArgumentError("$(name) length must be positive"))
+    start = position + 2
+    stop = start + width - 1
+    stop <= lastindex(text) || throw(ArgumentError("$(name) truncated"))
+    value = Int(decode_characters(SubString(text, start, stop)))
+    value > 61 || throw(ArgumentError("escaped $(name) must be at least 62"))
+    return value, stop + 1
+end
+
+function states_width(states::Integer)
+    width = 0
+    capacity = big(1)
+    required = BigInt(states)
+    while capacity < required
+        width += 1
+        capacity *= 62
+    end
+    return width
+end
+
+function big_binomial(n::Int, k::Int)
+    (0 <= k <= n) || return big(0)
+    choose = min(k, n - k)
+    value = big(1)
+    for index = 1:choose
+        value = (value * (n - choose + index)) ÷ index
+    end
+    return value
+end
+
+function rank_support(total_dynkin_rank::Int, positions::Vector{Int})
+    rank = big(0)
+    previous = -1
+    count = length(positions)
+    for (index, position) in enumerate(positions)
+        for candidate = (previous+1):(position-1)
+            rank += big_binomial(total_dynkin_rank - 1 - candidate, count - index)
+        end
+        previous = position
+    end
+    return rank
+end
+
+function unrank_support(total_dynkin_rank::Int, count::Int, rank::Integer)
+    0 <= count <= total_dynkin_rank || throw(ArgumentError("support size out of range"))
+    positions = Int[]
+    next_min = 0
+    remaining_rank = BigInt(rank)
+    for index = 1:count
+        found = false
+        for position = next_min:(total_dynkin_rank-1)
+            block = big_binomial(total_dynkin_rank - 1 - position, count - index)
+            if remaining_rank < block
+                push!(positions, position)
+                next_min = position + 1
+                found = true
+                break
+            end
+            remaining_rank -= block
+        end
+        found || throw(ArgumentError("support rank out of range"))
+    end
+    remaining_rank == 0 || throw(ArgumentError("support rank out of range"))
+    return positions
+end
+
+function signed_digit(value::Int)
+    value != 0 || throw(ArgumentError("signed sparse rows encode only non-zero values"))
+    return zigzag_encode(value) - 1
+end
+
+decode_signed_digit(value::Int) = zigzag_decode(value + 1)
+
+direct_small_limit(total_dynkin_rank::Int, max_small::Int = MAX_SMALL_VALUE) =
+    min(max_small, DIRECT_ROW_CAPACITY ÷ total_dynkin_rank)
 
 function normalize_summands(summands::Vector{Vector{Vector{Int}}}, factors::Vector{Factor})
     result = Vector{Vector{Vector{Int}}}()
@@ -202,17 +295,6 @@ function normalize_summands(summands::Vector{Vector{Vector{Int}}}, factors::Vect
     return result
 end
 
-function row_digits(row)
-    digits = Int[]
-    signed = false
-    for weights in row, coefficient in weights
-        coefficient < 0 && (signed = true)
-        push!(digits, coefficient)
-    end
-    signed || return false, digits
-    return true, zigzag_encode.(digits)
-end
-
 function row_value(digits::Vector{Int}, base::Int)
     value = big(0)
     for digit in digits
@@ -221,64 +303,88 @@ function row_value(digits::Vector{Int}, base::Int)
     return value
 end
 
-function summand_width(total_dynkin_rank::Int, base::Int)
-    base >= 2 || throw(ArgumentError("bundle base must be at least 2"))
-    width = 1
-    capacity = big(62)
-    while capacity < big(base)^total_dynkin_rank
-        width += 1
-        capacity *= 62
+function unpack_digits(value::Integer, base::Int, count::Int)
+    remaining = BigInt(value)
+    digits = Vector{Int}(undef, count)
+    for index = count:-1:1
+        digits[index] = Int(remaining % base)
+        remaining ÷= base
     end
-    return width
+    remaining == 0 || throw(ArgumentError("packed value exceeds range"))
+    return digits
+end
+
+function split_flat_row(flat_coefficients::Vector{Int}, factors::Vector{Factor})
+    row = Vector{Vector{Int}}()
+    offset = 1
+    for factor in factors
+        push!(row, flat_coefficients[offset:(offset+factor.rank-1)])
+        offset += factor.rank
+    end
+    return row
 end
 
 function encode_summand(row, total_dynkin_rank::Int)
-    signed, digits = row_digits(row)
-    base = max(2, maximum(digits; init = 1) + 1)
-    width = summand_width(total_dynkin_rank, base)
-    value_chars = encode_characters(row_value(digits, base), width)
-    prefix = signed ? string(SIGNED_BASE_MARKER) : ""
-    if base < 62
-        return string(prefix, encode_characters(base, 1), value_chars)
+    flat_coefficients = collect(Iterators.flatten(row))
+    positions = findall(!iszero, flat_coefficients) .- 1
+    values = flat_coefficients[(positions .+ 1)]
+    support_size = length(positions)
+    small_limit = direct_small_limit(total_dynkin_rank)
+    direct_pair_offset = total_dynkin_rank * small_limit
+    direct_pair_capacity = direct_pair_offset + Int(big_binomial(total_dynkin_rank, 2))
+
+    if support_size == 1 && !isempty(values) && 1 <= values[1] <= small_limit
+        return string(BASE62_CHARS[(values[1]-1)*total_dynkin_rank+positions[1]+1])
     end
-    base_characters = encode_natural(base)
-    return string(
-        prefix,
-        ESCAPE,
-        encode_characters(length(base_characters), 1),
-        base_characters,
-        value_chars,
+    if direct_pair_capacity <= DIRECT_ROW_CAPACITY && support_size == 2 && values == [1, 1]
+        return string(
+            BASE62_CHARS[direct_pair_offset+Int(
+                rank_support(total_dynkin_rank, positions),
+            )+1],
+        )
+    end
+    if support_size == 2 && values == [1, 1]
+        return string(
+            SMALL_PAIR_MARKER,
+            encode_characters(
+                rank_support(total_dynkin_rank, positions),
+                states_width(big_binomial(total_dynkin_rank, 2)),
+            ),
+        )
+    end
+
+    signed = any(value -> value < 0, values)
+    if !signed && all(1 <= value <= MAX_SMALL_VALUE for value in values)
+        text = string(SMALL_POSITIVE_MARKER, encode_descriptor(support_size + 1))
+        support_size == 0 && return text
+        text *= encode_characters(
+            rank_support(total_dynkin_rank, positions),
+            states_width(big_binomial(total_dynkin_rank, support_size)),
+        )
+        text *= encode_characters(
+            row_value([value - 1 for value in values], MAX_SMALL_VALUE),
+            states_width(big(MAX_SMALL_VALUE)^support_size),
+        )
+        return text
+    end
+    digits = signed ? signed_digit.(values) : [value - 1 for value in values]
+    text = string(
+        signed ? SIGNED_SPARSE_MARKER : POSITIVE_SPARSE_MARKER,
+        encode_descriptor(support_size + 1),
     )
+    support_size == 0 && return text
+    text *= encode_characters(
+        rank_support(total_dynkin_rank, positions),
+        states_width(big_binomial(total_dynkin_rank, support_size)),
+    )
+    base = max(2, maximum(digits; init = 1) + 1)
+    text *= encode_descriptor(base)
+    text *= encode_characters(row_value(digits, base), states_width(big(base)^support_size))
+    return text
 end
 
 function encode_bundle_text(summands::Vector{Vector{Vector{Int}}}, total_dynkin_rank::Int)
     return join(encode_summand.(summands, Ref(total_dynkin_rank)))
-end
-
-function decode_bundle_base(bundle_text::AbstractString, position::Int)
-    position <= lastindex(bundle_text) ||
-        throw(ArgumentError("unexpected end decoding bundle base"))
-    base_character = bundle_text[position]
-    base_value = get(BASE62_INDEX, base_character, -1)
-    base_value >= 0 ||
-        throw(ArgumentError("invalid bundle base character $(repr(base_character))"))
-    if base_value == 0
-        position + 1 <= lastindex(bundle_text) ||
-            throw(ArgumentError("escaped base truncated"))
-        base_len = Int(decode_characters(string(bundle_text[position+1])))
-        base_len > 0 || throw(ArgumentError("escaped base length must be positive"))
-        base_start = position + 2
-        base_stop = base_start + base_len - 1
-        base_stop <= lastindex(bundle_text) ||
-            throw(ArgumentError("escaped base truncated"))
-        base = Int(decode_characters(SubString(bundle_text, base_start, base_stop)))
-        base >= 62 || throw(ArgumentError("escaped base must be at least 62"))
-        return base, base_stop + 1
-    elseif base_value == 1
-        throw(ArgumentError("bundle base character 1 is reserved"))
-    else
-        return base_value, position + 1
-    end
 end
 
 function decode_bundle_text(
@@ -288,37 +394,128 @@ function decode_bundle_text(
 )
     summands = Vector{Vector{Vector{Int}}}()
     position = 1
+    small_limit = direct_small_limit(total_dynkin_rank)
+    direct_pair_offset = total_dynkin_rank * small_limit
+    direct_pair_capacity = direct_pair_offset + Int(big_binomial(total_dynkin_rank, 2))
     while position <= lastindex(bundle_text)
-        signed = false
-        if get(BASE62_INDEX, bundle_text[position], -1) == 1
-            signed = true
+        lead = bundle_text[position]
+        lead_value = get(BASE62_INDEX, lead, -1)
+        lead_value >= 0 ||
+            throw(ArgumentError("invalid bundle row lead character $(repr(lead))"))
+        if small_limit > 0 && lead_value < direct_pair_offset
+            flat_coefficients = zeros(Int, total_dynkin_rank)
+            flat_coefficients[(lead_value%total_dynkin_rank)+1] =
+                lead_value ÷ total_dynkin_rank + 1
             position += 1
+            push!(summands, split_flat_row(flat_coefficients, factors))
+            continue
         end
-        base, position = decode_bundle_base(bundle_text, position)
-        width = summand_width(total_dynkin_rank, base)
-        start = position
-        stop = start + width - 1
-        stop <= lastindex(bundle_text) || throw(ArgumentError("summand truncated"))
-        value = decode_characters(SubString(bundle_text, start, stop))
-        position = stop + 1
-
-        flat_coefficients = Vector{Int}(undef, total_dynkin_rank)
-        for index = total_dynkin_rank:-1:1
-            flat_coefficients[index] = Int(value % base)
-            value ÷= base
+        if direct_pair_capacity <= DIRECT_ROW_CAPACITY &&
+           direct_pair_offset <= lead_value < direct_pair_capacity
+            flat_coefficients = zeros(Int, total_dynkin_rank)
+            for support_position in
+                unrank_support(total_dynkin_rank, 2, lead_value - direct_pair_offset)
+                flat_coefficients[support_position+1] = 1
+            end
+            position += 1
+            push!(summands, split_flat_row(flat_coefficients, factors))
+            continue
         end
-        value == 0 || throw(ArgumentError("packed value exceeds range"))
-        if signed
-            flat_coefficients = zigzag_decode.(flat_coefficients)
+        if lead == SMALL_PAIR_MARKER
+            position += 1
+            support_width = states_width(big_binomial(total_dynkin_rank, 2))
+            support_stop = position + support_width - 1
+            support_stop <= lastindex(bundle_text) ||
+                throw(ArgumentError("pair support rank truncated"))
+            support_rank =
+                support_width == 0 ? big(0) :
+                decode_characters(SubString(bundle_text, position, support_stop))
+            flat_coefficients = zeros(Int, total_dynkin_rank)
+            for support_position in unrank_support(total_dynkin_rank, 2, support_rank)
+                flat_coefficients[support_position+1] = 1
+            end
+            position = support_stop + 1
+            push!(summands, split_flat_row(flat_coefficients, factors))
+            continue
         end
-
-        row = Vector{Vector{Int}}()
-        offset = 1
-        for factor in factors
-            push!(row, flat_coefficients[offset:(offset+factor.rank-1)])
-            offset += factor.rank
+        if lead == SMALL_POSITIVE_MARKER
+            position += 1
+            support_size_plus_one, position =
+                decode_descriptor(bundle_text, position, "support size")
+            support_size = support_size_plus_one - 1
+            0 <= support_size <= total_dynkin_rank ||
+                throw(ArgumentError("support size out of range"))
+            flat_coefficients = zeros(Int, total_dynkin_rank)
+            if support_size == 0
+                push!(summands, split_flat_row(flat_coefficients, factors))
+                continue
+            end
+            support_width = states_width(big_binomial(total_dynkin_rank, support_size))
+            support_stop = position + support_width - 1
+            support_stop <= lastindex(bundle_text) ||
+                throw(ArgumentError("support rank truncated"))
+            support_rank =
+                support_width == 0 ? big(0) :
+                decode_characters(SubString(bundle_text, position, support_stop))
+            position = support_stop + 1
+            support_positions =
+                unrank_support(total_dynkin_rank, support_size, support_rank)
+            value_width = states_width(big(MAX_SMALL_VALUE)^support_size)
+            value_stop = position + value_width - 1
+            value_stop <= lastindex(bundle_text) ||
+                throw(ArgumentError("value payload truncated"))
+            packed_value =
+                value_width == 0 ? big(0) :
+                decode_characters(SubString(bundle_text, position, value_stop))
+            position = value_stop + 1
+            values = unpack_digits(packed_value, MAX_SMALL_VALUE, support_size) .+ 1
+            for (support_position, value) in zip(support_positions, values)
+                flat_coefficients[support_position+1] = value
+            end
+            push!(summands, split_flat_row(flat_coefficients, factors))
+            continue
         end
-        push!(summands, row)
+        (lead == POSITIVE_SPARSE_MARKER || lead == SIGNED_SPARSE_MARKER) ||
+            throw(ArgumentError("invalid bundle row lead character $(repr(lead))"))
+        signed = lead == SIGNED_SPARSE_MARKER
+        position += 1
+        support_size_plus_one, position =
+            decode_descriptor(bundle_text, position, "support size")
+        support_size = support_size_plus_one - 1
+        0 <= support_size <= total_dynkin_rank ||
+            throw(ArgumentError("support size out of range"))
+        flat_coefficients = zeros(Int, total_dynkin_rank)
+        if support_size == 0
+            push!(summands, split_flat_row(flat_coefficients, factors))
+            continue
+        end
+        support_width = states_width(big_binomial(total_dynkin_rank, support_size))
+        support_stop = position + support_width - 1
+        support_stop <= lastindex(bundle_text) ||
+            throw(ArgumentError("support rank truncated"))
+        support_rank =
+            support_width == 0 ? big(0) :
+            decode_characters(SubString(bundle_text, position, support_stop))
+        support_rank < big_binomial(total_dynkin_rank, support_size) ||
+            throw(ArgumentError("support rank out of range"))
+        position = support_stop + 1
+        support_positions = unrank_support(total_dynkin_rank, support_size, support_rank)
+        base, position = decode_descriptor(bundle_text, position, "value base")
+        base >= 2 || throw(ArgumentError("value base must be at least 2"))
+        value_width = states_width(big(base)^support_size)
+        value_stop = position + value_width - 1
+        value_stop <= lastindex(bundle_text) ||
+            throw(ArgumentError("value payload truncated"))
+        packed_value =
+            value_width == 0 ? big(0) :
+            decode_characters(SubString(bundle_text, position, value_stop))
+        position = value_stop + 1
+        digits = unpack_digits(packed_value, base, support_size)
+        values = signed ? decode_signed_digit.(digits) : digits .+ 1
+        for (support_position, value) in zip(support_positions, values)
+            flat_coefficients[support_position+1] = value
+        end
+        push!(summands, split_flat_row(flat_coefficients, factors))
     end
     return summands
 end

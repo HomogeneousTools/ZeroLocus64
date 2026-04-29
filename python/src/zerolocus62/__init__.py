@@ -1,6 +1,6 @@
-"""ZeroLocus62 v2.2 canonical label codec for bundles, zero loci, and degeneracy loci.
+"""ZeroLocus62 v3 canonical label codec for bundles, zero loci, and degeneracy loci.
 
-This module is the reference Python implementation of the ZeroLocus62 v2.2
+This module is the reference Python implementation of the ZeroLocus62 v3
 specification.
 
 ZeroLocus62 uses the 62-character lexicographic alphabet
@@ -14,6 +14,7 @@ the two bundle parts of a degeneracy locus.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import comb
 
 STANDARD_NAME = "ZeroLocus62"
 BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -35,6 +36,12 @@ TYPE_TABLE: list[tuple[str, int]] = (
 TYPE_CHARS = BASE62[1 : 1 + len(TYPE_TABLE)]
 TYPE_INDEX = {entry: index for index, entry in enumerate(TYPE_TABLE)}
 TYPE_CHAR_INDEX = {char: index for index, char in enumerate(TYPE_CHARS)}
+MAX_SMALL_VALUE = 7
+DIRECT_ROW_CAPACITY = 58
+SMALL_PAIR_MARKER = BASE62[58]
+SMALL_POSITIVE_MARKER = BASE62[59]
+POSITIVE_SPARSE_MARKER = BASE62[60]
+SIGNED_SPARSE_MARKER = BASE62[61]
 
 
 def _is_valid_type_rank(group: str, rank: int) -> bool:
@@ -181,19 +188,103 @@ def _decode_factor(text: str, position: int) -> tuple[Factor, int]:
     return Factor(group, rank, mask), end
 
 
-def _row_base(row: list[list[int]]) -> int:
-    return max(
-        2,
-        max((coefficient for weights in row for coefficient in weights), default=1) + 1,
-    )
-
-
 def _zigzag_encode(value: int) -> int:
     return 2 * value if value >= 0 else -2 * value - 1
 
 
 def _zigzag_decode(value: int) -> int:
     return value // 2 if value % 2 == 0 else -(value // 2) - 1
+
+
+def _encode_descriptor(value: int) -> str:
+    if value <= 0:
+        raise ValueError("descriptor must be positive")
+    if value <= 61:
+        return BASE62[value]
+    encoded = _encode_natural(value)
+    if len(encoded) > 61:
+        raise ValueError("descriptor length exceeds hard limit")
+    return ESCAPE + _encode_characters(len(encoded), 1) + encoded
+
+
+def _decode_descriptor(text: str, position: int, name: str) -> tuple[int, int]:
+    if position >= len(text):
+        raise ValueError(f"unexpected end decoding {name}")
+    lead = BASE62_INDEX.get(text[position], -1)
+    if lead < 0:
+        raise ValueError(f"invalid Base62 character in {name} {text[position]!r}")
+    if lead != 0:
+        return lead, position + 1
+    if position + 2 > len(text):
+        raise ValueError(f"{name} truncated")
+    width = _decode_characters(text[position + 1])
+    if width <= 0:
+        raise ValueError(f"{name} length must be positive")
+    start = position + 2
+    end = start + width
+    if end > len(text):
+        raise ValueError(f"{name} truncated")
+    value = _decode_characters(text[start:end])
+    if value <= 61:
+        raise ValueError(f"escaped {name} must be at least 62")
+    return value, end
+
+
+def _states_width(states: int) -> int:
+    width = 0
+    capacity = 1
+    while capacity < states:
+        width += 1
+        capacity *= 62
+    return width
+
+
+def _rank_support(total_dynkin_rank: int, positions: list[int]) -> int:
+    rank = 0
+    previous = -1
+    count = len(positions)
+    for index, position in enumerate(positions):
+        for candidate in range(previous + 1, position):
+            rank += comb(total_dynkin_rank - 1 - candidate, count - 1 - index)
+        previous = position
+    return rank
+
+
+def _unrank_support(total_dynkin_rank: int, count: int, rank: int) -> list[int]:
+    if not 0 <= count <= total_dynkin_rank:
+        raise ValueError("support size out of range")
+    positions: list[int] = []
+    next_min = 0
+    remaining_rank = rank
+    for index in range(count):
+        for position in range(next_min, total_dynkin_rank):
+            block = comb(total_dynkin_rank - 1 - position, count - 1 - index)
+            if remaining_rank < block:
+                positions.append(position)
+                next_min = position + 1
+                break
+            remaining_rank -= block
+        else:
+            raise ValueError("support rank out of range")
+    if remaining_rank:
+        raise ValueError("support rank out of range")
+    return positions
+
+
+def _signed_digit(value: int) -> int:
+    if value == 0:
+        raise ValueError("signed sparse rows encode only non-zero values")
+    return _zigzag_encode(value) - 1
+
+
+def _decode_signed_digit(value: int) -> int:
+    return _zigzag_decode(value + 1)
+
+
+def _direct_small_limit(
+    total_dynkin_rank: int, max_small_value: int = MAX_SMALL_VALUE
+) -> int:
+    return min(max_small_value, DIRECT_ROW_CAPACITY // total_dynkin_rank)
 
 
 def _normalize_summands(
@@ -221,15 +312,6 @@ def _normalize_summands(
     return normalized
 
 
-def _row_digits(row: list[list[int]]) -> tuple[bool, list[int]]:
-    signed = any(coefficient < 0 for weights in row for coefficient in weights)
-    if signed:
-        return True, [
-            _zigzag_encode(coefficient) for weights in row for coefficient in weights
-        ]
-    return False, [coefficient for weights in row for coefficient in weights]
-
-
 def _row_value(digits: list[int], base: int) -> int:
     value = 0
     for digit in digits:
@@ -237,65 +319,93 @@ def _row_value(digits: list[int], base: int) -> int:
     return value
 
 
-def _summand_width(total_dynkin_rank: int, base: int) -> int:
-    if base < 2:
-        raise ValueError("bundle base must be at least 2")
-    width = 1
-    capacity = 62
-    while capacity < base**total_dynkin_rank:
-        width += 1
-        capacity *= 62
-    return width
+def _unpack_digits(value: int, base: int, count: int) -> list[int]:
+    digits = [0] * count
+    for index in range(count - 1, -1, -1):
+        digits[index] = value % base
+        value //= base
+    if value:
+        raise ValueError("packed value exceeds range")
+    return digits
+
+
+def _split_flat_row(
+    flat_coefficients: list[int], factors: list[Factor]
+) -> list[list[int]]:
+    row: list[list[int]] = []
+    offset = 0
+    for factor in factors:
+        row.append(flat_coefficients[offset : offset + factor.rank])
+        offset += factor.rank
+    return row
 
 
 def _encode_summand(row: list[list[int]], total_dynkin_rank: int) -> str:
     """Encode one bundle summand row."""
 
-    signed, digits = _row_digits(row)
-    base = max(2, max(digits, default=1) + 1)
-    width = _summand_width(total_dynkin_rank, base)
-    value_chars = _encode_characters(_row_value(digits, base), width)
-    prefix = BASE62[1] if signed else ""
-    if base < 62:
-        return prefix + _encode_characters(base, 1) + value_chars
-    base_characters = _encode_natural(base)
-    return (
-        prefix
-        + ESCAPE
-        + _encode_characters(len(base_characters), 1)
-        + base_characters
-        + value_chars
+    flat_coefficients = [coefficient for weights in row for coefficient in weights]
+    positions = [index for index, value in enumerate(flat_coefficients) if value != 0]
+    values = [flat_coefficients[index] for index in positions]
+    support_size = len(positions)
+    small_limit = _direct_small_limit(total_dynkin_rank)
+    direct_pair_offset = total_dynkin_rank * small_limit
+    direct_pair_capacity = direct_pair_offset + comb(total_dynkin_rank, 2)
+
+    if support_size == 1 and 1 <= values[0] <= small_limit:
+        return BASE62[(values[0] - 1) * total_dynkin_rank + positions[0]]
+    if (
+        direct_pair_capacity <= DIRECT_ROW_CAPACITY
+        and support_size == 2
+        and values == [1, 1]
+    ):
+        return BASE62[direct_pair_offset + _rank_support(total_dynkin_rank, positions)]
+    if support_size == 2 and values == [1, 1]:
+        return SMALL_PAIR_MARKER + _encode_characters(
+            _rank_support(total_dynkin_rank, positions),
+            _states_width(comb(total_dynkin_rank, 2)),
+        )
+
+    signed = any(value < 0 for value in values)
+    if not signed and all(1 <= value <= MAX_SMALL_VALUE for value in values):
+        text = SMALL_POSITIVE_MARKER + _encode_descriptor(support_size + 1)
+        if support_size == 0:
+            return text
+        support_states = comb(total_dynkin_rank, support_size)
+        text += _encode_characters(
+            _rank_support(total_dynkin_rank, positions),
+            _states_width(support_states),
+        )
+        text += _encode_characters(
+            _row_value([value - 1 for value in values], MAX_SMALL_VALUE),
+            _states_width(MAX_SMALL_VALUE**support_size),
+        )
+        return text
+
+    digits = (
+        [_signed_digit(value) for value in values]
+        if signed
+        else [value - 1 for value in values]
     )
+    text = (
+        SIGNED_SPARSE_MARKER if signed else POSITIVE_SPARSE_MARKER
+    ) + _encode_descriptor(support_size + 1)
+    if support_size == 0:
+        return text
+    support_states = comb(total_dynkin_rank, support_size)
+    text += _encode_characters(
+        _rank_support(total_dynkin_rank, positions),
+        _states_width(support_states),
+    )
+    base = max(2, max(digits, default=1) + 1)
+    text += _encode_descriptor(base)
+    text += _encode_characters(
+        _row_value(digits, base), _states_width(base**support_size)
+    )
+    return text
 
 
 def _encode_bundle_text(summands: list[list[list[int]]], total_dynkin_rank: int) -> str:
     return "".join(_encode_summand(row, total_dynkin_rank) for row in summands)
-
-
-def _decode_bundle_base(bundle_text: str, position: int) -> tuple[int, int]:
-    if position >= len(bundle_text):
-        raise ValueError("unexpected end decoding bundle base")
-    base_character = bundle_text[position]
-    base_value = BASE62_INDEX.get(base_character, -1)
-    if base_value < 0:
-        raise ValueError(f"invalid bundle base character {base_character!r}")
-    if base_value == 0:
-        if position + 2 > len(bundle_text):
-            raise ValueError("escaped base truncated")
-        base_len = _decode_characters(bundle_text[position + 1])
-        if base_len <= 0:
-            raise ValueError("escaped base length must be positive")
-        base_start = position + 2
-        base_end = base_start + base_len
-        if base_end > len(bundle_text):
-            raise ValueError("escaped base truncated")
-        base = _decode_characters(bundle_text[base_start:base_end])
-        if base < 62:
-            raise ValueError("escaped base must be at least 62")
-        return base, base_end
-    if base_value == 1:
-        raise ValueError("bundle base character 1 is reserved")
-    return base_value, position + 1
 
 
 def _decode_bundle_text(
@@ -307,37 +417,132 @@ def _decode_bundle_text(
 
     summands: list[list[list[int]]] = []
     position = 0
+    small_limit = _direct_small_limit(total_dynkin_rank)
+    direct_pair_offset = total_dynkin_rank * small_limit
+    direct_pair_capacity = direct_pair_offset + comb(total_dynkin_rank, 2)
     while position < len(bundle_text):
-        signed = False
-        if BASE62_INDEX.get(bundle_text[position], -1) == 1:
-            signed = True
+        lead = bundle_text[position]
+        lead_value = BASE62_INDEX.get(lead, -1)
+        if lead_value < 0:
+            raise ValueError(f"invalid bundle row lead character {lead!r}")
+        if small_limit > 0 and lead_value < direct_pair_offset:
+            flat_coefficients = [0] * total_dynkin_rank
+            flat_coefficients[lead_value % total_dynkin_rank] = (
+                lead_value // total_dynkin_rank + 1
+            )
             position += 1
-        base, position = _decode_bundle_base(bundle_text, position)
-        width = _summand_width(total_dynkin_rank, base)
-        start = position
-        end = start + width
-        if end > len(bundle_text):
-            raise ValueError("summand truncated")
-        value = _decode_characters(bundle_text[start:end])
-        position = end
-
-        flat_coefficients = [0] * total_dynkin_rank
-        for index in range(total_dynkin_rank - 1, -1, -1):
-            flat_coefficients[index] = value % base
-            value //= base
-        if value:
-            raise ValueError("packed value exceeds range")
-        if signed:
-            flat_coefficients = [
-                _zigzag_decode(coefficient) for coefficient in flat_coefficients
+            summands.append(_split_flat_row(flat_coefficients, factors))
+            continue
+        if (
+            direct_pair_capacity <= DIRECT_ROW_CAPACITY
+            and direct_pair_offset <= lead_value < direct_pair_capacity
+        ):
+            flat_coefficients = [0] * total_dynkin_rank
+            positions = _unrank_support(
+                total_dynkin_rank, 2, lead_value - direct_pair_offset
+            )
+            for support_position in positions:
+                flat_coefficients[support_position] = 1
+            position += 1
+            summands.append(_split_flat_row(flat_coefficients, factors))
+            continue
+        if lead == SMALL_PAIR_MARKER:
+            position += 1
+            support_width = _states_width(comb(total_dynkin_rank, 2))
+            support_end = position + support_width
+            if support_end > len(bundle_text):
+                raise ValueError("pair support rank truncated")
+            support_rank = _decode_characters(bundle_text[position:support_end])
+            flat_coefficients = [0] * total_dynkin_rank
+            for support_position in _unrank_support(total_dynkin_rank, 2, support_rank):
+                flat_coefficients[support_position] = 1
+            position = support_end
+            summands.append(_split_flat_row(flat_coefficients, factors))
+            continue
+        if lead == SMALL_POSITIVE_MARKER:
+            position += 1
+            support_size_plus_one, position = _decode_descriptor(
+                bundle_text, position, "support size"
+            )
+            support_size = support_size_plus_one - 1
+            if not 0 <= support_size <= total_dynkin_rank:
+                raise ValueError("support size out of range")
+            flat_coefficients = [0] * total_dynkin_rank
+            if support_size == 0:
+                summands.append(_split_flat_row(flat_coefficients, factors))
+                continue
+            support_states = comb(total_dynkin_rank, support_size)
+            support_width = _states_width(support_states)
+            support_end = position + support_width
+            if support_end > len(bundle_text):
+                raise ValueError("support rank truncated")
+            support_rank = _decode_characters(bundle_text[position:support_end])
+            position = support_end
+            support_positions = _unrank_support(
+                total_dynkin_rank, support_size, support_rank
+            )
+            value_width = _states_width(MAX_SMALL_VALUE**support_size)
+            value_end = position + value_width
+            if value_end > len(bundle_text):
+                raise ValueError("value payload truncated")
+            values = [
+                digit + 1
+                for digit in _unpack_digits(
+                    _decode_characters(bundle_text[position:value_end]),
+                    MAX_SMALL_VALUE,
+                    support_size,
+                )
             ]
-
-        row: list[list[int]] = []
-        offset = 0
-        for factor in factors:
-            row.append(flat_coefficients[offset : offset + factor.rank])
-            offset += factor.rank
-        summands.append(row)
+            position = value_end
+            for support_position, value in zip(support_positions, values, strict=True):
+                flat_coefficients[support_position] = value
+            summands.append(_split_flat_row(flat_coefficients, factors))
+            continue
+        if lead not in {POSITIVE_SPARSE_MARKER, SIGNED_SPARSE_MARKER}:
+            raise ValueError(f"invalid bundle row lead character {lead!r}")
+        signed = lead == SIGNED_SPARSE_MARKER
+        position += 1
+        support_size_plus_one, position = _decode_descriptor(
+            bundle_text, position, "support size"
+        )
+        support_size = support_size_plus_one - 1
+        if not 0 <= support_size <= total_dynkin_rank:
+            raise ValueError("support size out of range")
+        flat_coefficients = [0] * total_dynkin_rank
+        if support_size == 0:
+            summands.append(_split_flat_row(flat_coefficients, factors))
+            continue
+        support_states = comb(total_dynkin_rank, support_size)
+        support_width = _states_width(support_states)
+        support_end = position + support_width
+        if support_end > len(bundle_text):
+            raise ValueError("support rank truncated")
+        support_rank = _decode_characters(bundle_text[position:support_end])
+        if support_rank >= support_states:
+            raise ValueError("support rank out of range")
+        position = support_end
+        support_positions = _unrank_support(
+            total_dynkin_rank, support_size, support_rank
+        )
+        base, position = _decode_descriptor(bundle_text, position, "value base")
+        if base < 2:
+            raise ValueError("value base must be at least 2")
+        value_width = _states_width(base**support_size)
+        value_end = position + value_width
+        if value_end > len(bundle_text):
+            raise ValueError("value payload truncated")
+        digits = _unpack_digits(
+            _decode_characters(bundle_text[position:value_end]), base, support_size
+        )
+        position = value_end
+        values = (
+            [_decode_signed_digit(digit) for digit in digits]
+            if signed
+            else [digit + 1 for digit in digits]
+        )
+        for support_position, value in zip(support_positions, values, strict=True):
+            flat_coefficients[support_position] = value
+        summands.append(_split_flat_row(flat_coefficients, factors))
     return summands
 
 

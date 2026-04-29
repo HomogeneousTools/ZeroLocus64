@@ -1,6 +1,6 @@
 # zerolocus62
 
-This directory contains the JavaScript reference implementation of the ZeroLocus62 v2.2 format.
+This directory contains the JavaScript reference implementation of the ZeroLocus62 v3 format.
 
 The repository-level overview is in [../README.md](../README.md), and the canonical format specification is in [../specification.md](../specification.md).
 
@@ -32,14 +32,14 @@ npm --prefix javascript test
 import { Factor, decodeLabel, encodeLabel } from "zerolocus62";
 
 const label = encodeLabel([new Factor("A", 1, 1)], [[[1]]]);
-console.assert(label === "1.21");
+console.assert(label === "1.0");
 
 const result = decodeLabel(label);
 console.assert(result.factors[0].group === "A");
 console.assert(result.summands[0][0][0] === 1);
 ```
 
-As in the specification, a one-bundle label is also a canonical descriptor of the encoded bundle itself, not only of a prospective zero locus, so signed rows such as `encodeLabel([new Factor("A", 1, 1)], [[[-1]]]) === "1.121"` are valid.
+As in the specification, a one-bundle label is also a canonical descriptor of the encoded bundle itself, not only of a prospective zero locus, so signed rows such as `encodeLabel([new Factor("A", 1, 1)], [[[-1]]]) === "1.z220"` are valid.
 
 ## Website
 

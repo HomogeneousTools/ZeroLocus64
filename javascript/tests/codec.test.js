@@ -24,22 +24,22 @@ const examplesData = await loadExamples();
 
 const SPEC_EXAMPLES = [
   ["P1", [new Factor("A", 1, 1)], [], "1"],
-  ["P1 with O(1)", [new Factor("A", 1, 1)], [[[1]]], "1.21"],
-  ["P1 with O + O(1)", [new Factor("A", 1, 1)], [[[0]], [[1]]], "1.2021"],
+  ["P1 with O(1)", [new Factor("A", 1, 1)], [[[1]]], "1.0"],
+  ["P1 with O + O(1)", [new Factor("A", 1, 1)], [[[0]], [[1]]], "1.0x1"],
   ["P3", [new Factor("A", 3, 1)], [], "30"],
-  ["P3 with O(1)", [new Factor("A", 3, 1)], [[[1, 0, 0]]], "30.24"],
-  ["P3 with O(-1)", [new Factor("A", 3, 1)], [[[-1, 0, 0]]], "30.124"],
+  ["P3 with O(1)", [new Factor("A", 3, 1)], [[[1, 0, 0]]], "30.0"],
+  ["P3 with O(-1)", [new Factor("A", 3, 1)], [[[-1, 0, 0]]], "30.z2020"],
   [
     "P3 split bundle",
     [new Factor("A", 3, 1)],
     [[[1, 0, 0]], [[0, 0, 1]]],
-    "30.2124",
+    "30.02",
   ],
   ["Gr(2,4)", [new Factor("A", 3, 2)], [], "31"],
   ["Gr(3,6)", [new Factor("A", 5, 4)], [], "53"],
   ["Fl(1,3,4)", [new Factor("A", 3, 5)], [], "34"],
   ["Q5", [new Factor("B", 3, 1)], [], "H0"],
-  ["Q5 with bundle", [new Factor("B", 3, 1)], [[[1, 0, 0]]], "H0.24"],
+  ["Q5 with bundle", [new Factor("B", 3, 1)], [[[1, 0, 0]]], "H0.0"],
   ["B5/B", [new Factor("B", 5, 31)], [], "JU"],
   ["OGr(5,10)", [new Factor("D", 5, 16)], [], "iF"],
   ["Freudenthal", [new Factor("E", 7, 64)], [], "u11"],
@@ -56,13 +56,13 @@ const SPEC_EXAMPLES = [
       new Factor("A", 1, 1),
     ],
     [[[1], [1], [1], [1], [1]]],
-    "11111.2V",
+    "11111.x6000",
   ],
   [
     "P1xP1 diagonal",
     [new Factor("A", 1, 1), new Factor("A", 1, 1)],
     [[[1], [1]]],
-    "11.23",
+    "11.E",
   ],
   [
     "P1xP1 split",
@@ -71,7 +71,7 @@ const SPEC_EXAMPLES = [
       [[1], [0]],
       [[0], [1]],
     ],
-    "11.2122",
+    "11.01",
   ],
   [
     "(P1)^3 v2.2 positive difference",
@@ -80,7 +80,7 @@ const SPEC_EXAMPLES = [
       [[0], [0], [1]],
       [[0], [2], [0]],
     ],
-    "111.2232",
+    "111.15",
   ],
   [
     "(P1)^3 v2.2 signed difference",
@@ -89,7 +89,7 @@ const SPEC_EXAMPLES = [
       [[-1], [-1], [-1]],
       [[-1], [-1], [0]],
     ],
-    "111.126127",
+    "111.z3020z420",
   ],
 ];
 
@@ -125,14 +125,14 @@ test("encodeLabel canonicalizes factor order", () => {
       [new Factor("A", 2, 1), new Factor("A", 1, 1)],
       [[[0, 1], [1]]],
     ),
-    "120.25",
+    "120.M",
   );
   assert.equal(
     encodeLabel(
       [new Factor("A", 1, 1), new Factor("A", 2, 1)],
       [[[1], [0, 1]]],
     ),
-    "120.25",
+    "120.M",
   );
 });
 
@@ -158,9 +158,9 @@ for (const [label, message] of [
   ["0A2H", "escaped rank truncated"],
   ["0A1H", "mask truncated"],
   ["23", "mask out of range"],
-  ["11.111", "bundle base character 1 is reserved"],
-  ["11.2", "summand truncated"],
-  ["30.21.", "invalid bundle base character"],
+  ["11.x", "unexpected end decoding support size"],
+  ["11.2", "label is not in canonical form"],
+  ["30.21.", "invalid bundle row lead character"],
 ]) {
   test(`invalid label error: ${label || "<empty>"}`, () => {
     assert.throws(
@@ -183,27 +183,6 @@ test("curated canonicalization case stays stable", () => {
   );
 });
 
-test("v2.2 graph canonicalization changes selected v2.1 labels", () => {
-  for (const name of [
-    "v22_equal_factors_positive_difference",
-    "v22_equal_factors_signed_difference",
-  ]) {
-    const exampleCase = examplesData.curated_cases.find(
-      (candidate) => candidate.name === name,
-    );
-    assert.ok(exampleCase);
-    const factors = factorsFromCase(exampleCase);
-    assert.equal(encodeLabel(factors, exampleCase.summands), exampleCase.label);
-    assert.notEqual(exampleCase.label_v21, exampleCase.label);
-    assert.throws(
-      () => decodeLabel(exampleCase.label_v21),
-      (error) =>
-        error instanceof Error &&
-        error.message.includes("not in canonical form"),
-    );
-  }
-});
-
 test("decode results can be normalized against explicit factors", () => {
   const exampleCase = examplesData.curated_cases.find(
     (candidate) => candidate.name === "a3_p1_weight_100",
@@ -216,11 +195,11 @@ test("decode results can be normalized against explicit factors", () => {
 });
 
 for (const [label, canonical] of [
-  ["201.25", "120.26"],
-  ["1.2120", "1.2021"],
-  ["11.2221", "11.2122"],
-  ["111.2136", "111.2232"],
-  ["111.123127", "111.126127"],
+  ["201.25", "120.M"],
+  ["1.2120", "1.0x1"],
+  ["11.2221", "11.01"],
+  ["111.2136", "111.15"],
+  ["111.123127", "111.z3020z420"],
 ]) {
   test(`non-canonical label rejected: ${label}`, () => {
     assert.throws(
@@ -235,9 +214,9 @@ for (const [label, canonical] of [
 
 test("isCanonical returns true for valid canonical labels", () => {
   assert.equal(isCanonical("1"), true);
-  assert.equal(isCanonical("1.21"), true);
-  assert.equal(isCanonical("11.2122"), true);
-  assert.equal(isCanonical("30.24"), true);
+  assert.equal(isCanonical("1.0"), true);
+  assert.equal(isCanonical("11.01"), true);
+  assert.equal(isCanonical("30.0"), true);
 });
 
 test("isCanonical returns false for non-canonical labels", () => {
@@ -256,7 +235,7 @@ test("escaped base round-trip: coefficient 61", () => {
   const factors = [new Factor("A", 1, 1)];
   const summands = [[[61]]];
   const label = encodeLabel(factors, summands);
-  assert.equal(label, "1.0210z");
+  assert.equal(label, "1.y2zy");
   assert.deepEqual(
     normalizeDecoded(decodeLabel(label)),
     normalizeDecoded(canonicalize(factors, summands)),
@@ -267,7 +246,7 @@ test("escaped base round-trip: coefficient 100", () => {
   const factors = [new Factor("A", 1, 1)];
   const summands = [[[100]]];
   const label = encodeLabel(factors, summands);
-  assert.equal(label, "1.021d1c");
+  assert.equal(label, "1.y2021c1b");
   assert.deepEqual(
     normalizeDecoded(decodeLabel(label)),
     normalizeDecoded(canonicalize(factors, summands)),
@@ -278,7 +257,7 @@ test("escaped base round-trip: mixed standard and escaped", () => {
   const factors = [new Factor("A", 1, 1)];
   const summands = [[[61]], [[1]]];
   const label = encodeLabel(factors, summands);
-  assert.equal(label, "1.0210z21");
+  assert.equal(label, "1.0y2zy");
   assert.deepEqual(
     normalizeDecoded(decodeLabel(label)),
     normalizeDecoded(canonicalize(factors, summands)),
@@ -299,7 +278,7 @@ test("signed weight round-trip", () => {
   const factors = [new Factor("A", 1, 1)];
   const summands = [[[-1]]];
   const label = encodeLabel(factors, summands);
-  assert.equal(label, "1.121");
+  assert.equal(label, "1.z220");
   assert.deepEqual(
     normalizeDecoded(decodeLabel(label)),
     normalizeDecoded(canonicalize(factors, summands)),
@@ -312,13 +291,13 @@ test("signed weights sort canonically across equal factors", () => {
     [[0], [-1]],
     [[-1], [0]],
   ];
-  assert.equal(encodeLabel(factors, summands), "11.121122");
+  assert.equal(encodeLabel(factors, summands), "11.z2020z2120");
 });
 
 test("isCanonical accepts escaped base labels", () => {
-  assert.equal(isCanonical("1.0210z"), true);
-  assert.equal(isCanonical("1.021d1c"), true);
-  assert.equal(isCanonical("1.0210z21"), true);
+  assert.equal(isCanonical("1.y2zy"), true);
+  assert.equal(isCanonical("1.y2021c1b"), true);
+  assert.equal(isCanonical("1.0y2zy"), true);
 });
 
 // --- Degeneracy locus tests ---
@@ -328,14 +307,14 @@ test("LOCUS_SEP constant is dash", () => {
 });
 
 const DEGENERACY_EXAMPLES = [
-  ["P1 id", [new Factor("A", 1, 1)], [[[1]]], [[[1]]], 0, "1.21-21-0"],
+  ["P1 id", [new Factor("A", 1, 1)], [[[1]]], [[[1]]], 0, "1.0-0-0"],
   [
     "P1 signed source",
     [new Factor("A", 1, 1)],
     [[[-1]]],
     [[[1]]],
     0,
-    "1.121-21-0",
+    "1.z220-0-0",
   ],
   [
     "P1xP1",
@@ -343,7 +322,7 @@ const DEGENERACY_EXAMPLES = [
     [[[1], [0]]],
     [[[0], [1]]],
     0,
-    "11.21-22-0",
+    "11.1-0-0",
   ],
   [
     "P3 two-to-one",
@@ -351,7 +330,7 @@ const DEGENERACY_EXAMPLES = [
     [[[1, 0, 0]], [[1, 0, 0]]],
     [[[2, 0, 0]]],
     1,
-    "30.2424-3I-1",
+    "30.00-3-1",
   ],
 ];
 
@@ -374,7 +353,7 @@ for (const [
 }
 
 test("degeneracy decode returns tagged result", () => {
-  const result = decodeLabel("1.21-21-0");
+  const result = decodeLabel("1.0-0-0");
   assert.equal(result.type, "degeneracy_locus");
   assert.equal(result.factors.length, 1);
   assert.deepEqual(result.summandsE, [[[1]]]);
@@ -402,7 +381,7 @@ test("degeneracy canonicalize minimizes E then F", () => {
   const label1 = encodeLabel(factors, [[[1], [0]]], [[[0], [1]]], 0);
   const label2 = encodeLabel(factors, [[[0], [1]]], [[[1], [0]]], 0);
   assert.equal(label1, label2);
-  assert.equal(label1, "11.21-22-0");
+  assert.equal(label1, "11.1-0-0");
 });
 
 test("degeneracy rank bound k > 0", () => {
@@ -422,9 +401,9 @@ test("degeneracy rank bound k=62 uses two characters", () => {
 });
 
 test("isCanonical works for degeneracy labels", () => {
-  assert.equal(isCanonical("1.21-21-0"), true);
-  assert.equal(isCanonical("11.21-22-0"), true);
-  assert.equal(isCanonical("30.2424-3I-1"), true);
+  assert.equal(isCanonical("1.0-0-0"), true);
+  assert.equal(isCanonical("11.1-0-0"), true);
+  assert.equal(isCanonical("30.00-3-1"), true);
 });
 
 for (const [label, message] of [
@@ -442,7 +421,7 @@ for (const [label, message] of [
 }
 
 test("zero-locus decode returns tagged result", () => {
-  const result = decodeLabel("1.21");
+  const result = decodeLabel("1.0");
   assert.equal(result.type, "zero_locus");
   assert.deepEqual(result.summands, [[[1]]]);
 });

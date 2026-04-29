@@ -52,10 +52,10 @@ test("fundamental weight expressions stay readable", () => {
 });
 
 test("detailed decode provides ambient summaries", () => {
-  const details = decodeDetailedLabel("11.2122");
+  const details = decodeDetailedLabel("11.01");
   assert.equal(details.ambient.humanReadable, "P^1 x P^1");
   assert.equal(details.summandDetails.length, 2);
-  assert.equal(details.summandDetails[0].factorWeights[0].tuple, "(0)");
+  assert.equal(details.summandDetails[0].factorWeights[0].tuple, "(1)");
 });
 
 test("dynkin diagram SVG uses the marked grassmannian-info style", () => {

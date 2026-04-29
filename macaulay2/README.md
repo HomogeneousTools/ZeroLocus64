@@ -14,6 +14,6 @@ Run the package self-tests:
 M2 -q -e 'path = prepend("macaulay2", path); loadPackage "ZeroLocus62"; check ZeroLocus62; exit 0'
 ```
 
-As in the other implementations, a one-bundle label canonically describes the encoded bundle itself, not only a possible zero locus, so signed rows such as `encodeLabel({Factor("A",1,1)}, {{{-1}}}) == "1.121"` are valid.
+As in the other implementations, a one-bundle label canonically describes the encoded bundle itself, not only a possible zero locus, so signed rows such as `encodeLabel({Factor("A",1,1)}, {{{-1}}}) == "1.z220"` are valid.
 
 The repository-level overview is in [../README.md](../README.md), and the canonical format specification is in [../specification.md](../specification.md).

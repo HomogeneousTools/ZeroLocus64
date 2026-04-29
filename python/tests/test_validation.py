@@ -6,7 +6,7 @@ from zerolocus62 import Factor, canonicalize, decode_label, encode_label
 
 
 def test_repeated_summands_remain_explicit() -> None:
-    assert encode_label([Factor("A", 1, 1)], [[[1]], [[1]]]) == "1.2121"
+    assert encode_label([Factor("A", 1, 1)], [[[1]], [[1]]]) == "1.00"
 
 
 def test_high_coefficients_choose_larger_bases() -> None:
@@ -19,7 +19,7 @@ def test_high_coefficients_choose_larger_bases() -> None:
 
 def test_negative_coefficients_use_signed_rows() -> None:
     label = encode_label([Factor("A", 1, 1)], [[[-1]]])
-    assert label == "1.121"
+    assert label == "1.z220"
     result = decode_label(label)
     assert result["factors"] == [Factor("A", 1, 1)]
     assert result["summands"] == [[[-1]]]
@@ -48,7 +48,7 @@ def test_weight_vectors_must_match_dynkin_rank() -> None:
 @pytest.mark.parametrize(
     "label",
     [
-        "H0.24",
+        "H0.0",
         "iF",
         "u11",
         "0A1H000",

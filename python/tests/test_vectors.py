@@ -79,4 +79,4 @@ def test_corpus_length_statistics_stay_compact(corpus_cases: list[dict]) -> None
     assert round(mean(lengths), 2) < 17.0
     assert median(lengths) <= 16
     assert lengths[int(0.9 * len(lengths)) - 1] <= 22
-    assert lengths[-1] >= 30
+    assert lengths[-1] >= 20
