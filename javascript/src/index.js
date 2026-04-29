@@ -374,9 +374,7 @@ function binomial(n, k) {
   let choose = Math.min(k, n - k);
   let value = 1n;
   for (let index = 1; index <= choose; index += 1) {
-    value =
-      (value * BigInt(n - choose + index)) /
-      BigInt(index);
+    value = (value * BigInt(n - choose + index)) / BigInt(index);
   }
   return value;
 }
@@ -435,7 +433,10 @@ function decodeSignedDigit(value) {
 }
 
 function directSmallLimit(totalDynkinRank, maxSmallValue = MAX_SMALL_VALUE) {
-  return Math.min(maxSmallValue, Math.floor(DIRECT_ROW_CAPACITY / totalDynkinRank));
+  return Math.min(
+    maxSmallValue,
+    Math.floor(DIRECT_ROW_CAPACITY / totalDynkinRank),
+  );
 }
 
 function unpackDigits(value, base, count) {
@@ -509,9 +510,7 @@ function encodeSummand(row, totalDynkinRank) {
   const signed = values.some((value) => value < 0);
   if (
     !signed &&
-    values.every(
-      (value) => value >= 1 && value <= MAX_SMALL_VALUE,
-    )
+    values.every((value) => value >= 1 && value <= MAX_SMALL_VALUE)
   ) {
     let text = SMALL_POSITIVE_MARKER + encodeDescriptor(supportSize + 1);
     if (supportSize === 0) {
@@ -635,8 +634,7 @@ function decodeBundleText(bundleText, factors, totalDynkinRank) {
     }
     if (lead === SMALL_PAIR_MARKER) {
       position += 1;
-      const supportEnd =
-        position + statesWidth(binomial(totalDynkinRank, 2));
+      const supportEnd = position + statesWidth(binomial(totalDynkinRank, 2));
       if (supportEnd > bundleText.length) {
         throw new RangeError("pair support rank truncated");
       }
@@ -724,7 +722,9 @@ function decodeBundleText(bundleText, factors, totalDynkinRank) {
     if (supportEnd > bundleText.length) {
       throw new RangeError("support rank truncated");
     }
-    const supportRank = decodeCharacters(bundleText.slice(position, supportEnd));
+    const supportRank = decodeCharacters(
+      bundleText.slice(position, supportEnd),
+    );
     if (supportRank >= binomial(totalDynkinRank, supportSize)) {
       throw new RangeError("support rank out of range");
     }
