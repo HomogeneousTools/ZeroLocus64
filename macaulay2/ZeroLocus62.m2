@@ -12,7 +12,7 @@ newPackage(
     )
 
 export {
-    "base62", "escapeCharacter", "locusSep", "sep", "signedBaseMarker",
+    "base62", "escapeCharacter", "locusSep", "sep",
     "standardName", "Factor", "canonicalize", "decodeLabel", "encodeLabel",
     "isCanonical", "markedNodes"
     }
@@ -26,7 +26,6 @@ base62Value = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 sepValue = "."
 locusSepValue = "-"
 escapeValue = base62Value#0
-signedBaseMarkerValue = base62Value#1
 positiveSparseMarkerValue = base62Value#60
 signedSparseMarkerValue = base62Value#61
 maxSmallValue = 7
@@ -1074,7 +1073,6 @@ base62 = base62Value
 escapeCharacter = escapeValue
 locusSep = locusSepValue
 sep = sepValue
-signedBaseMarker = signedBaseMarkerValue
 standardName = standardNameValue
 decodeLabel = decodeLabelInternal
 encodeLabel = encodeLabelInternal

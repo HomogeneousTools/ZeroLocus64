@@ -4,7 +4,6 @@ export const BASE62 =
 export const SEP = ".";
 export const LOCUS_SEP = "-";
 export const ESCAPE = BASE62[0];
-export const SIGNED_BASE_MARKER = BASE62[1];
 export const TYPE_ORDER = "ABCDEFG";
 
 export const TYPE_TABLE = Object.freeze([

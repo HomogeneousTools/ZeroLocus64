@@ -22,7 +22,6 @@ const BASE62_INDEX =
 const SEP = '.'
 const LOCUS_SEP = '-'
 const ESCAPE = BASE62_CHARS[1]
-const SIGNED_BASE_MARKER = BASE62_CHARS[2]
 const TYPE_ORDER = Set(['A', 'B', 'C', 'D', 'E', 'F', 'G'])
 const TYPE_TABLE = vcat(
     [('A', rank) for rank = 1:15],

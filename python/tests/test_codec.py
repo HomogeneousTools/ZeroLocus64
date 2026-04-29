@@ -62,13 +62,13 @@ SPEC_EXAMPLES = [
         "11.01",
     ),
     (
-        "(P1)^3 v2.2 positive difference",
+        "(P1)^3 positive sparse example",
         [Factor("A", 1, 1), Factor("A", 1, 1), Factor("A", 1, 1)],
         [[[0], [0], [1]], [[0], [2], [0]]],
         "111.15",
     ),
     (
-        "(P1)^3 v2.2 signed difference",
+        "(P1)^3 signed sparse example",
         [Factor("A", 1, 1), Factor("A", 1, 1), Factor("A", 1, 1)],
         [[[-1], [-1], [-1]], [[-1], [-1], [0]]],
         "111.z3020z420",

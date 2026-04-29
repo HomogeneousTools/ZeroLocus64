@@ -74,7 +74,7 @@ const SPEC_EXAMPLES = [
     "11.01",
   ],
   [
-    "(P1)^3 v2.2 positive difference",
+    "(P1)^3 positive sparse example",
     [new Factor("A", 1, 1), new Factor("A", 1, 1), new Factor("A", 1, 1)],
     [
       [[0], [0], [1]],
@@ -83,7 +83,7 @@ const SPEC_EXAMPLES = [
     "111.15",
   ],
   [
-    "(P1)^3 v2.2 signed difference",
+    "(P1)^3 signed sparse example",
     [new Factor("A", 1, 1), new Factor("A", 1, 1), new Factor("A", 1, 1)],
     [
       [[-1], [-1], [-1]],
