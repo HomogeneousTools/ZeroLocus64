@@ -1,9 +1,9 @@
 """
     ZeroLocus62
 
-    Reference Julia implementation of the ZeroLocus62 v3 label codec.
+    Reference Julia implementation of the ZeroLocus62 v3.1 label codec.
 
-This module implements the ZeroLocus62 v3 specification using the Base62
+This module implements the ZeroLocus62 v3.1 specification using the Base62
 alphabet `0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz`.
 """
 module ZeroLocus62
@@ -557,147 +557,75 @@ end
 
 serialize_weights(weights::Vector{Int}) = "[" * join(string.(weights), ",") * "]"
 
+flat_row(row) = Tuple(Iterators.flatten(row))
+
+function row_permutations(values::Vector{Int})
+    length(values) <= 1 && return [copy(values)]
+    result = Vector{Vector{Int}}()
+    for index in eachindex(values)
+        head = values[index]
+        tail = [values[i] for i in eachindex(values) if i != index]
+        for permutation in row_permutations(tail)
+            push!(result, vcat([head], permutation))
+        end
+    end
+    return result
+end
+
 function canonical_factor_order(
     factors::Vector{Factor},
     summands::Vector{Vector{Vector{Int}}},
     summands_f::Union{Vector{Vector{Vector{Int}}},Nothing},
 )
     length(factors) < 2 && return collect(eachindex(factors))
-
-    row_entries = Tuple{Char,Int,Vector{Vector{Int}}}[]
-    append!(row_entries, ('E', index, row) for (index, row) in enumerate(summands))
-    if summands_f !== nothing
-        append!(row_entries, ('F', index, row) for (index, row) in enumerate(summands_f))
-    end
-    isempty(row_entries) && return collect(eachindex(factors))
-
-    row_offset = length(factors)
-    vertex_colors = Dict{Int,String}()
-    edge_labels = Dict{Tuple{Int,Int},String}()
-
-    for (index, factor) in enumerate(factors)
-        vertex_colors[index] = "F:" * encode_factor(factor)
-    end
-    for (offset, (bundle_tag, _, row)) in enumerate(row_entries)
-        vertex = row_offset + offset
-        vertex_colors[vertex] = "R:" * string(bundle_tag)
-        for (factor_index, weights) in enumerate(row)
-            label = serialize_weights(weights)
-            edge_labels[(factor_index, vertex)] = label
-            edge_labels[(vertex, factor_index)] = label
-        end
-    end
-
-    function cell_key(vertex::Int, cell::Vector{Int})
-        return join(sort([get(edge_labels, (vertex, other), "~") for other in cell]), ";")
-    end
-
-    function refine(partition::Vector{Vector{Int}})
-        current = partition
-        while true
-            updated = Vector{Vector{Int}}()
-            changed = false
-            for cell in current
-                buckets = Dict{String,Vector{Int}}()
-                for vertex in cell
-                    parts = String[vertex_colors[vertex]]
-                    append!(parts, (cell_key(vertex, other_cell) for other_cell in current))
-                    signature = join(parts, "|")
-                    push!(get!(()->Int[], buckets, signature), vertex)
-                end
-                if length(buckets) == 1
-                    push!(updated, cell)
-                    continue
-                end
-                changed = true
-                for signature in sort!(collect(keys(buckets)))
-                    push!(updated, buckets[signature])
-                end
+    factor_codes = encode_factor.(factors)
+    blocks = Vector{Vector{Int}}()
+    start = 1
+    for stop = 2:(length(factors)+1)
+        if stop == length(factors) + 1 || factor_codes[stop] != factor_codes[start]
+            if stop - start > 1
+                push!(blocks, collect(start:(stop-1)))
             end
-            changed || return current
-            current = updated
+            start = stop
         end
     end
+    isempty(blocks) && return collect(eachindex(factors))
 
-    function target_cell(partition::Vector{Vector{Int}})
-        best_index = nothing
-        best_key = nothing
-        for (index, cell) in enumerate(partition)
-            length(cell) <= 1 && continue
-            key = (length(cell), cell[1] <= row_offset ? 0 : 1, index)
-            if best_key === nothing || key < best_key
-                best_key = key
-                best_index = index
-            end
+    function row_certificate(order, rows)
+        return Tuple(sort([flat_row([row[index] for index in order]) for row in rows]))
+    end
+
+    function certificate(order)
+        if summands_f === nothing
+            return (row_certificate(order, summands),)
         end
-        return best_index
+        return (row_certificate(order, summands), row_certificate(order, summands_f))
     end
 
-    function individualize(partition::Vector{Vector{Int}}, cell_index::Int, chosen::Int)
-        cell = partition[cell_index]
-        remainder = [vertex for vertex in cell if vertex != chosen]
-        result = Vector{Vector{Int}}()
-        append!(result, partition[1:(cell_index-1)])
-        push!(result, [chosen])
-        isempty(remainder) || push!(result, remainder)
-        append!(result, partition[(cell_index+1):end])
-        return result
-    end
-
-    function certificate(partition::Vector{Vector{Int}})
-        ordered = [cell[1] for cell in partition]
-        colors = join((vertex_colors[vertex] for vertex in ordered), "|")
-        edges = String[]
-        for left_index = 1:length(ordered)
-            for right_index = (left_index+1):length(ordered)
-                push!(
-                    edges,
-                    get(edge_labels, (ordered[left_index], ordered[right_index]), "~"),
-                )
-            end
-        end
-        return colors * "||" * join(edges, "|")
-    end
-
-    initial_partition = Vector{Vector{Int}}()
-    factor_groups = Dict{String,Vector{Int}}()
-    for (index, factor) in enumerate(factors)
-        color = "F:" * encode_factor(factor)
-        push!(get!(()->Int[], factor_groups, color), index)
-    end
-    for color in sort!(collect(keys(factor_groups)))
-        push!(initial_partition, factor_groups[color])
-    end
-    row_groups = Dict{String,Vector{Int}}()
-    for offset = 1:length(row_entries)
-        vertex = row_offset + offset
-        color = vertex_colors[vertex]
-        push!(get!(()->Int[], row_groups, color), vertex)
-    end
-    for color in sort!(collect(keys(row_groups)))
-        push!(initial_partition, row_groups[color])
-    end
-
+    block_permutations = row_permutations.(blocks)
     best_certificate = nothing
     best_order = collect(eachindex(factors))
 
-    function search(partition::Vector{Vector{Int}})
-        refined = refine(partition)
-        cell_index = target_cell(refined)
-        if cell_index === nothing
-            current_certificate = certificate(refined)
+    function visit(block_index::Int, order::Vector{Int})
+        if block_index > length(blocks)
+            current_certificate = certificate(order)
             if best_certificate === nothing || current_certificate < best_certificate
                 best_certificate = current_certificate
-                best_order = [cell[1] for cell in refined if cell[1] <= row_offset]
+                best_order = copy(order)
             end
             return
         end
-        for vertex in refined[cell_index]
-            search(individualize(refined, cell_index, vertex))
+        block = blocks[block_index]
+        for permutation in block_permutations[block_index]
+            next_order = copy(order)
+            for (position, factor_index) in zip(block, permutation)
+                next_order[position] = factor_index
+            end
+            visit(block_index + 1, next_order)
         end
     end
 
-    search(initial_partition)
+    visit(1, collect(eachindex(factors)))
     return best_order
 end
 
@@ -734,15 +662,14 @@ function canonicalize(
     if !is_degeneracy && isempty(summands)
         return factors, summands
     end
-    total_dynkin_rank = sum(factor.rank for factor in factors)
     best_order = canonical_factor_order(factors, summands, summands_f)
     if is_degeneracy
         _, summands_f = reorder(best_order, factors, summands_f)
     end
     factors, summands = reorder(best_order, factors, summands)
-    sort!(summands; by = row -> encode_summand(row, total_dynkin_rank))
+    sort!(summands; by = flat_row)
     if is_degeneracy
-        sort!(summands_f; by = row -> encode_summand(row, total_dynkin_rank))
+        sort!(summands_f; by = flat_row)
         return factors, summands, summands_f, k
     end
     return factors, summands

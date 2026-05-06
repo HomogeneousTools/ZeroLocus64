@@ -1,6 +1,6 @@
 # ZeroLocus62.jl
 
-This directory contains the Julia reference implementation of the ZeroLocus62 v3 format.
+This directory contains the Julia reference implementation of the ZeroLocus62 v3.1 format.
 
 The repository-level overview is in [../README.md](../README.md), and the canonical format specification is in [../specification.md](../specification.md).
 

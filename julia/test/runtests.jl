@@ -73,11 +73,11 @@ end
     examples = [
         ("1", [Factor('A', 1, 1)], Vector{Vector{Vector{Int}}}()),
         ("1.0", [Factor('A', 1, 1)], [[[1]]]),
-        ("1.0x1", [Factor('A', 1, 1)], [[[0]], [[1]]]),
+        ("1.x10", [Factor('A', 1, 1)], [[[0]], [[1]]]),
         ("30", [Factor('A', 3, 1)], Vector{Vector{Vector{Int}}}()),
         ("30.0", [Factor('A', 3, 1)], [[[1, 0, 0]]]),
         ("30.z2020", [Factor('A', 3, 1)], [[[-1, 0, 0]]]),
-        ("30.02", [Factor('A', 3, 1)], [[[1, 0, 0]], [[0, 0, 1]]]),
+        ("30.20", [Factor('A', 3, 1)], [[[1, 0, 0]], [[0, 0, 1]]]),
         ("31", [Factor('A', 3, 2)], Vector{Vector{Vector{Int}}}()),
         ("53", [Factor('A', 5, 4)], Vector{Vector{Vector{Int}}}()),
         ("34", [Factor('A', 3, 5)], Vector{Vector{Vector{Int}}}()),
@@ -101,14 +101,14 @@ end
             [[[1], [1], [1], [1], [1]]],
         ),
         ("11.E", [Factor('A', 1, 1), Factor('A', 1, 1)], [[[1], [1]]]),
-        ("11.01", [Factor('A', 1, 1), Factor('A', 1, 1)], [[[1], [0]], [[0], [1]]]),
+        ("11.10", [Factor('A', 1, 1), Factor('A', 1, 1)], [[[1], [0]], [[0], [1]]]),
         (
-            "111.15",
+            "111.24",
             [Factor('A', 1, 1), Factor('A', 1, 1), Factor('A', 1, 1)],
             [[[0], [0], [1]], [[0], [2], [0]]],
         ),
         (
-            "111.z3020z420",
+            "111.z420z3020",
             [Factor('A', 1, 1), Factor('A', 1, 1), Factor('A', 1, 1)],
             [[[-1], [-1], [-1]], [[-1], [-1], [0]]],
         ),
@@ -120,6 +120,22 @@ end
         @test result.factors == canon[1]
         @test result.summands == canon[2]
     end
+end
+
+@testset "v3.1 coefficient-row canonicalization" begin
+    @test encode_label([Factor('A', 1, 1)], [[[0]], [[1]]]) == "1.x10"
+    @test encode_label([Factor('A', 3, 1)], [[[1, 0, 0]], [[0, 0, 1]]]) == "30.20"
+    @test encode_label([Factor('A', 1, 1), Factor('A', 1, 1)], [[[1], [0]], [[0], [1]]]) ==
+          "11.10"
+    @test encode_label(
+        [Factor('A', 1, 1), Factor('A', 1, 1), Factor('A', 2, 1)],
+        [[[1], [0], [0, 1]], [[0], [1], [1, 0]]],
+    ) == "1120.WT"
+    row = [[0], [0], [1, 0, 0, 0, 0, 0]]
+    @test encode_label(
+        [Factor('A', 1, 1), Factor('A', 1, 1), Factor('B', 6, 1)],
+        [deepcopy(row) for _ = 1:9],
+    ) == "11K00." * repeat("2", 9)
 end
 
 @testset "Curated Vectors" begin
@@ -212,20 +228,20 @@ end
     assert_decode_error("201.25", "not in canonical form")
     assert_decode_error("1.2120", "not in canonical form")
     assert_decode_error("11.2221", "not in canonical form")
-    assert_decode_error("111.2136", "not in canonical form")
-    assert_decode_error("111.123127", "not in canonical form")
+    assert_decode_error("111.42", "not in canonical form")
+    assert_decode_error("111.z3020z420", "not in canonical form")
 
     @test decode_label("120.M") isa NamedTuple
-    @test decode_label("1.0x1") isa NamedTuple
-    @test decode_label("11.01") isa NamedTuple
-    @test decode_label("111.15") isa NamedTuple
-    @test decode_label("111.z3020z420") isa NamedTuple
+    @test decode_label("1.x10") isa NamedTuple
+    @test decode_label("11.10") isa NamedTuple
+    @test decode_label("111.24") isa NamedTuple
+    @test decode_label("111.z420z3020") isa NamedTuple
 end
 
 @testset "is_canonical" begin
     @test is_canonical("1") == true
     @test is_canonical("1.0") == true
-    @test is_canonical("11.01") == true
+    @test is_canonical("11.10") == true
     @test is_canonical("30.0") == true
 
     @test is_canonical("201.25") == false

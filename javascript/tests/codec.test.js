@@ -25,7 +25,7 @@ const examplesData = await loadExamples();
 const SPEC_EXAMPLES = [
   ["P1", [new Factor("A", 1, 1)], [], "1"],
   ["P1 with O(1)", [new Factor("A", 1, 1)], [[[1]]], "1.0"],
-  ["P1 with O + O(1)", [new Factor("A", 1, 1)], [[[0]], [[1]]], "1.0x1"],
+  ["P1 with O + O(1)", [new Factor("A", 1, 1)], [[[0]], [[1]]], "1.x10"],
   ["P3", [new Factor("A", 3, 1)], [], "30"],
   ["P3 with O(1)", [new Factor("A", 3, 1)], [[[1, 0, 0]]], "30.0"],
   ["P3 with O(-1)", [new Factor("A", 3, 1)], [[[-1, 0, 0]]], "30.z2020"],
@@ -33,7 +33,7 @@ const SPEC_EXAMPLES = [
     "P3 split bundle",
     [new Factor("A", 3, 1)],
     [[[1, 0, 0]], [[0, 0, 1]]],
-    "30.02",
+    "30.20",
   ],
   ["Gr(2,4)", [new Factor("A", 3, 2)], [], "31"],
   ["Gr(3,6)", [new Factor("A", 5, 4)], [], "53"],
@@ -71,7 +71,7 @@ const SPEC_EXAMPLES = [
       [[1], [0]],
       [[0], [1]],
     ],
-    "11.01",
+    "11.10",
   ],
   [
     "(P1)^3 positive sparse example",
@@ -80,7 +80,7 @@ const SPEC_EXAMPLES = [
       [[0], [0], [1]],
       [[0], [2], [0]],
     ],
-    "111.15",
+    "111.24",
   ],
   [
     "(P1)^3 signed sparse example",
@@ -89,7 +89,7 @@ const SPEC_EXAMPLES = [
       [[-1], [-1], [-1]],
       [[-1], [-1], [0]],
     ],
-    "111.z3020z420",
+    "111.z420z3020",
   ],
 ];
 
@@ -133,6 +133,48 @@ test("encodeLabel canonicalizes factor order", () => {
       [[[1], [0, 1]]],
     ),
     "120.M",
+  );
+});
+
+test("v3.1 sorts summands by flattened coefficients", () => {
+  assert.equal(encodeLabel([new Factor("A", 1, 1)], [[[0]], [[1]]]), "1.x10");
+  assert.equal(
+    encodeLabel([new Factor("A", 3, 1)], [[[1, 0, 0]], [[0, 0, 1]]]),
+    "30.20",
+  );
+  assert.equal(
+    encodeLabel(
+      [new Factor("A", 1, 1), new Factor("A", 1, 1)],
+      [
+        [[1], [0]],
+        [[0], [1]],
+      ],
+    ),
+    "11.10",
+  );
+});
+
+test("v3.1 equal factor blocks use row multiset certificate", () => {
+  assert.equal(
+    encodeLabel(
+      [new Factor("A", 1, 1), new Factor("A", 1, 1), new Factor("A", 2, 1)],
+      [
+        [[1], [0], [0, 1]],
+        [[0], [1], [1, 0]],
+      ],
+    ),
+    "1120.WT",
+  );
+});
+
+test("v3.1 repeated rows do not create graph backtracking", () => {
+  const row = [[0], [0], [1, 0, 0, 0, 0, 0]];
+  assert.equal(
+    encodeLabel(
+      [new Factor("A", 1, 1), new Factor("A", 1, 1), new Factor("B", 6, 1)],
+      Array.from({ length: 9 }, () => row),
+    ),
+    `11K00.${"2".repeat(9)}`,
   );
 });
 
@@ -196,10 +238,10 @@ test("decode results can be normalized against explicit factors", () => {
 
 for (const [label, canonical] of [
   ["201.25", "120.M"],
-  ["1.2120", "1.0x1"],
-  ["11.2221", "11.01"],
-  ["111.2136", "111.15"],
-  ["111.123127", "111.z3020z420"],
+  ["1.2120", "1.x10"],
+  ["11.2221", "11.10"],
+  ["111.42", "111.24"],
+  ["111.z3020z420", "111.z420z3020"],
 ]) {
   test(`non-canonical label rejected: ${label}`, () => {
     assert.throws(
@@ -215,7 +257,7 @@ for (const [label, canonical] of [
 test("isCanonical returns true for valid canonical labels", () => {
   assert.equal(isCanonical("1"), true);
   assert.equal(isCanonical("1.0"), true);
-  assert.equal(isCanonical("11.01"), true);
+  assert.equal(isCanonical("11.10"), true);
   assert.equal(isCanonical("30.0"), true);
 });
 

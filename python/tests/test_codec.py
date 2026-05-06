@@ -26,11 +26,11 @@ def factors_from_case(case: dict) -> list[Factor]:
 SPEC_EXAMPLES = [
     ("P1", [Factor("A", 1, 1)], [], "1"),
     ("P1 with O(1)", [Factor("A", 1, 1)], [[[1]]], "1.0"),
-    ("P1 with O + O(1)", [Factor("A", 1, 1)], [[[0]], [[1]]], "1.0x1"),
+    ("P1 with O + O(1)", [Factor("A", 1, 1)], [[[0]], [[1]]], "1.x10"),
     ("P3", [Factor("A", 3, 1)], [], "30"),
     ("P3 with O(1)", [Factor("A", 3, 1)], [[[1, 0, 0]]], "30.0"),
     ("P3 with O(-1)", [Factor("A", 3, 1)], [[[-1, 0, 0]]], "30.z2020"),
-    ("P3 split bundle", [Factor("A", 3, 1)], [[[1, 0, 0]], [[0, 0, 1]]], "30.02"),
+    ("P3 split bundle", [Factor("A", 3, 1)], [[[1, 0, 0]], [[0, 0, 1]]], "30.20"),
     ("Gr(2,4)", [Factor("A", 3, 2)], [], "31"),
     ("Gr(3,6)", [Factor("A", 5, 4)], [], "53"),
     ("Fl(1,3,4)", [Factor("A", 3, 5)], [], "34"),
@@ -59,19 +59,19 @@ SPEC_EXAMPLES = [
         "P1xP1 split",
         [Factor("A", 1, 1), Factor("A", 1, 1)],
         [[[1], [0]], [[0], [1]]],
-        "11.01",
+        "11.10",
     ),
     (
         "(P1)^3 positive sparse example",
         [Factor("A", 1, 1), Factor("A", 1, 1), Factor("A", 1, 1)],
         [[[0], [0], [1]], [[0], [2], [0]]],
-        "111.15",
+        "111.24",
     ),
     (
         "(P1)^3 signed sparse example",
         [Factor("A", 1, 1), Factor("A", 1, 1), Factor("A", 1, 1)],
         [[[-1], [-1], [-1]], [[-1], [-1], [0]]],
-        "111.z3020z420",
+        "111.z420z3020",
     ),
 ]
 
@@ -110,6 +110,31 @@ def test_encode_label_canonicalizes_factor_order() -> None:
     assert (
         encode_label([Factor("A", 1, 1), Factor("A", 2, 1)], [[[1], [0, 1]]]) == "120.M"
     )
+
+
+def test_v31_sorts_summands_by_flattened_coefficients() -> None:
+    assert encode_label([Factor("A", 1, 1)], [[[0]], [[1]]]) == "1.x10"
+    assert encode_label([Factor("A", 3, 1)], [[[1, 0, 0]], [[0, 0, 1]]]) == "30.20"
+    assert (
+        encode_label(
+            [Factor("A", 1, 1), Factor("A", 1, 1)],
+            [[[1], [0]], [[0], [1]]],
+        )
+        == "11.10"
+    )
+
+
+def test_v31_equal_factor_blocks_use_row_multiset_certificate() -> None:
+    factors = [Factor("A", 1, 1), Factor("A", 1, 1), Factor("A", 2, 1)]
+    summands = [[[1], [0], [0, 1]], [[0], [1], [1, 0]]]
+    assert encode_label(factors, summands) == "1120.WT"
+
+
+def test_v31_repeated_rows_do_not_create_graph_backtracking() -> None:
+    factors = [Factor("A", 1, 1), Factor("A", 1, 1), Factor("B", 6, 1)]
+    row = [[0], [0], [1, 0, 0, 0, 0, 0]]
+    label = encode_label(factors, [row for _ in range(9)])
+    assert label == "11K00." + "2" * 9
 
 
 def test_curated_cases_cover_a_few_dozen_examples(curated_cases: list[dict]) -> None:
@@ -160,10 +185,10 @@ def test_curated_canonicalization_cases_match_their_expected_labels(
     ("label", "canonical"),
     [
         ("201.25", "120.M"),
-        ("1.2120", "1.0x1"),
-        ("11.2221", "11.01"),
-        ("111.2136", "111.15"),
-        ("111.123127", "111.z3020z420"),
+        ("1.2120", "1.x10"),
+        ("11.2221", "11.10"),
+        ("111.42", "111.24"),
+        ("111.z3020z420", "111.z420z3020"),
     ],
 )
 def test_noncanonical_labels_are_rejected(label: str, canonical: str) -> None:
@@ -175,7 +200,7 @@ def test_noncanonical_labels_are_rejected(label: str, canonical: str) -> None:
 def test_is_canonical_on_valid_labels() -> None:
     assert is_canonical("1") is True
     assert is_canonical("1.0") is True
-    assert is_canonical("11.01") is True
+    assert is_canonical("11.10") is True
     assert is_canonical("30.0") is True
 
 

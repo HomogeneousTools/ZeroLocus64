@@ -1,8 +1,8 @@
-# ZeroLocus62 format specification v3
+# ZeroLocus62 format specification v3.1
 
 ## Status
 
-This document defines Version 3 of the ZeroLocus62 encoding format for zero loci and degeneracy loci of completely reducible vector bundles on partial flag varieties. It is intended to be read as an RFC-like specification for the wire format and canonicalization rules.
+This document defines Version 3.1 of the ZeroLocus62 encoding format for zero loci and degeneracy loci of completely reducible vector bundles on partial flag varieties. It is intended to be read as an RFC-like specification for the wire format and canonicalization rules.
 
 ## 1. Conventions
 
@@ -90,7 +90,7 @@ The character `.` is reserved as the ambient-locus separator and MUST NOT appear
 
 The character `-` is reserved as the intra-locus separator for degeneracy loci and MUST NOT appear as a data character.
 
-The 62 alphanumeric characters are all safe in URLs and filenames without percent-encoding. This format does not include an in-band version identifier. In particular, v3 bundle rows are not designed to be decoded by v2.2 implementations, so version selection is an out-of-band concern.
+The 62 alphanumeric characters are all safe in URLs and filenames without percent-encoding. This format does not include an in-band version identifier. In particular, v3 and v3.1 bundle rows are not designed to be decoded by v2.2 implementations, so version selection is an out-of-band concern.
 
 Every label has exactly one of the following schematic forms:
 
@@ -131,64 +131,72 @@ Canonicalization is part of the format definition, not an optional implementatio
 A label is **canonical** if and only if it is produced by the following ordered criteria:
 
 1. The ambient factors are sorted by their encoded factor strings in ascending code-unit order.
-2. The remaining ambiguity among equal encoded ambient factors is resolved by canonically labeling the colored edge-labeled bipartite graph built from the ambient factors and bundle summands as described in §6.2.
-3. After the ambient factor order is fixed, each group of summand rows is sorted by its encoded strings in ascending code-unit order.
+2. The remaining ambiguity among equal encoded ambient factors is resolved by the coefficient-row multiset rule of §6.2.
+3. After the ambient factor order is fixed, each group of summand rows is sorted by its flattened coefficient vector in ascending lexicographic order.
 
-The v3 canonicalization rule is intentionally not the v2.1 lexicographic minimum over all equal-factor permutations. It is the graph-certificate rule introduced in v2.2, so some labels that were canonical in v2.1 are not canonical in v3.
+The v3.1 canonicalization rule intentionally replaces the v2.2/v3 graph-certificate rule. Some labels that were canonical in v3 are not canonical in v3.1.
 
-### 6.2 Canonical graph
+### 6.2 Equal-factor coefficient-row certificate
 
-After the initial ambient-factor sort of §6.1(1), build a finite bipartite graph as follows.
+After the initial ambient-factor sort of §6.1(1), only equal encoded ambient factors may still be permuted. Let the initially sorted ambient product be
 
-- Create one **factor vertex** for each ambient factor. Its color is the string `F:<ambient-code>`, where `<ambient-code>` is that factor's encoded ambient substring.
-- Create one **row vertex** for each summand row of the locus data. In the zero-locus / bundle case, every such vertex has color `R:E`. In the degeneracy-locus case, the row vertices coming from $E$ have color `R:E` and those coming from $F$ have color `R:F`.
-- For every factor vertex $x_i$ and row vertex $r_j$, add one edge labeled by the highest-weight vector contributed by row $r_j$ on factor $x_i$.
+```text
+X_1 x ... x X_m
+```
 
-No same-side edges are present.
+and let `code(i)` be the encoded ambient factor string of `X_i`.
 
-### 6.3 Canonical graph labeling algorithm
+An ambient permutation `pi` is **admissible** if and only if it preserves ambient factor codes:
 
-The canonical ambient order is the factor-vertex order induced by the lexicographically minimal certificate obtained from the following ordered-partition refinement procedure.
+```text
+code(i) = code(pi(i)) for every i.
+```
 
-1. Start from the ordered partition whose cells are:
-   - one cell for each factor-vertex color, in ascending lexicographic order of those colors;
-   - one cell for each row-vertex color, in ascending lexicographic order of those colors.
-2. Refine this partition repeatedly until stable. For one vertex $v$, its refinement signature is:
-   - its current color; and
-   - for each current cell $C$, the sorted multiset of edge labels from $v$ to the vertices of $C$, written in the current cell order.
-     Vertices in the same cell whose signatures differ are split into new cells ordered by ascending signature.
-3. If the refined partition is discrete, read off the ordered list of singleton vertices and compute its certificate:
-   - first the sequence of vertex colors in that order;
-   - then the sequence of all upper-triangular edge labels in that order.
-     Both sequences are compared lexicographically in ascending code-unit order.
-4. If the refined partition is not discrete, choose a target cell by:
-   - minimal cell size among non-singleton cells;
-   - on ties, prefer a factor-vertex cell over a row-vertex cell;
-   - on remaining ties, choose the earliest such cell in the ordered partition.
-5. Individualize each vertex of that target cell in turn: replace the cell by a singleton containing that vertex followed by the remainder of the cell, refine again, and recurse.
-6. Among all discrete leaves reached in this search tree, choose the lexicographically minimal certificate.
-7. The canonical ambient order is the order in which the factor vertices appear in the corresponding ordered singleton list.
-8. Finally, sort the summand rows by their encoded strings in that canonical ambient order.
+Equivalently, `pi` is a product of permutations inside the maximal contiguous blocks of equal encoded ambient factors.
 
-Any implementation is valid if and only if it produces exactly the same canonical ambient order as this graph-certificate procedure.
+For a summand row `r`, define `flat_pi(r)` to be the integer tuple obtained by first permuting the factor entries of `r` by `pi`, then concatenating the highest-weight vectors in the resulting ambient factor order.
 
-### 6.4 Complexity
+Tuples of integers are compared lexicographically using the usual total order on integers. Thus negative coefficients sort before zero coefficients, and zero coefficients sort before positive coefficients at the first differing position.
 
-Version 3 retains the graph-certificate canonicalization introduced in v2.2, replacing v2.1's normative exhaustive search over the Cartesian product of equal-factor permutations. The reference algorithm instead uses ordered-partition refinement with individualization/backtracking on the canonical graph of §6.2.
+For a bundle `E` with rows `r_1, ..., r_t`, define its row certificate under `pi` to be
 
-This change removes the explicit $\prod_i |B_i|!$ permutation enumeration from the format definition. The reference algorithm is still an exact graph-canonization procedure, so highly symmetric inputs may require substantial backtracking and are not known to admit a polynomial-time solution in full generality. In practice, refinement usually splits most cells quickly.
+```text
+C_E(pi) = sort_lex(flat_pi(r_1), ..., flat_pi(r_t)).
+```
 
-External tools such as `nauty`, `Traces`, or `bliss` are **not required** by this specification. A fully self-contained implementation is conforming. Implementations MAY nevertheless delegate the graph canonization step to an external exact canonization engine if they produce the same certificates and therefore the same canonical factor order.
+This sorted list is a multiset written in canonical order. Equal rows remain present with their multiplicity.
 
-### 6.5 Ordering convention
+For a one-bundle label, the canonical ambient permutation is any admissible `pi` minimizing `C_E(pi)` lexicographically as a finite list of integer tuples.
 
-All lexicographic comparisons in this specification — including ambient factor sorting, summand-tuple comparison, and summand-row sorting — use ascending code-unit order of the encoded strings.
+For a degeneracy-locus label with source bundle `E`, target bundle `F`, and rank bound `k`, the canonical ambient permutation is any admissible `pi` minimizing
+
+```text
+(C_E(pi), C_F(pi)).
+```
+
+The rank bound `k` is not part of this minimization because it is invariant under ambient factor permutations. The source and target bundles are not interchangeable.
+
+After choosing a minimizing `pi`, each bundle is emitted in the row order given by its corresponding certificate. If several admissible permutations have the same minimum certificate, any of them MAY be chosen: the ambient factor strings are equal within each permuted block, and the sorted row certificates are identical, so the emitted label is identical.
+
+### 6.3 Correctness
+
+The admissible permutations form a finite set. The row certificate for each candidate is a finite list of finite integer tuples. Lexicographic order on integers is total; therefore lexicographic order on equal-length tuples is total, and lexicographic order on finite lists of those tuples is total.
+
+Consequently, a minimum certificate exists. If the minimum is achieved by more than one admissible ambient permutation, the emitted ambient text and sorted bundle rows are identical. The rule therefore produces a unique canonical label.
+
+Version 3.1 does not require canonical labels for row vertices. Direct summands form a multiset, so permuting equal rows has no observable effect and MUST NOT force any backtracking over indistinguishable row vertices.
+
+### 6.4 Ordering conventions
+
+String comparisons in this specification, including ambient factor sorting and row-code tie-breaking inside the row codec, use ascending code-unit order of encoded strings.
 
 Code-unit order means: compare two strings position by position from left to right; the first position where they differ determines the order, and the string with the smaller character value at that position is smaller. For strings of unequal length that agree up to the shorter length, the shorter string is smaller.
 
 Because all 62 characters of the ZeroLocus62 alphabet are ASCII, the code-unit value of each character is simply its ASCII byte value. The alphabet order — numerals `0`–`9` (0x30–0x39, values 0–9), uppercase `A`–`Z` (0x41–0x5A, values 10–35), lowercase `a`–`z` (0x61–0x7A, values 36–61) — agrees exactly with ASCII byte order. Consequently, lexicographic comparison of any two encoded strings by Base62 value gives the same result as standard byte-wise string comparison.
 
-### 6.6 Canonical validation
+Integer tuple comparisons in §6.2 use the ordinary integer order, not the encoded row-string order.
+
+### 6.5 Canonical validation
 
 A decoded label MUST be in canonical form.
 
@@ -306,7 +314,7 @@ Two helper notions are used throughout:
    - one Base62 character of the same value when the integer lies in `1..61`;
    - otherwise `0 <len> <digits>`, where `<digits>` is the shortest Base62 representation of the integer and `<len>` is its character length encoded in one Base62 character.
 
-The v3 bundle-row codec has four row modes.
+The v3.1 bundle-row codec has four row modes. These are the same sparse row modes introduced in v3.
 
 #### 8.1.1 Direct small-single rows
 
@@ -422,10 +430,12 @@ $$
 E_1 \oplus \cdots \oplus E_t,
 $$
 
-then $t$ MUST be positive and each summand row is encoded separately. Bundles with zero summands are not representable in the wire format. For zero loci, the empty-bundle case is represented by the ambient-only form rather than by an empty bundle encoding. If the encoded rows are `s_1, ..., s_t`, their lexicographically sorted order `s_{(1)} <= ... <= s_{(t)}` is concatenated directly to form the locus part:
+then $t$ MUST be positive and each summand row is encoded separately. Bundles with zero summands are not representable in the wire format. For zero loci, the empty-bundle case is represented by the ambient-only form rather than by an empty bundle encoding.
+
+Rows MUST be emitted in the coefficient-vector order defined in §6.2: after the canonical ambient factor order is fixed, flatten each row by concatenating the highest-weight vectors in ambient factor order, sort those flattened integer tuples lexicographically, and encode rows in that order. If the resulting encoded rows are `s_1, ..., s_t`, the bundle text is their direct concatenation:
 
 $$
-s_{(1)} \cdots s_{(t)}.
+s_1 \cdots s_t.
 $$
 
 The number of summands is not written explicitly. Decoding remains unambiguous because the ambient part determines `W`, which determines `L`, and each summand begins either with a direct one-character code or with one of the explicit row markers `w`, `x`, `y`, `z`, each of which determines how to decode the remaining fields.
@@ -447,7 +457,7 @@ For a degeneracy locus with bundles $E$, $F$ and rank bound $k$, the locus part 
 <bundle_E> - <bundle_F> - <k>
 ```
 
-where `<bundle_E>` and `<bundle_F>` are each the concatenation of their sorted encoded summand rows (§8.2), and `<k>` is the rank bound encoding (§8.3).
+where `<bundle_E>` and `<bundle_F>` are each the concatenation of their coefficient-ordered summand rows (§8.2), and `<k>` is the rank bound encoding (§8.3).
 
 If $E$ has no summands, `<bundle_E>` is the empty string, but since an empty segment before `-` is forbidden (§4), a degeneracy locus with an empty source bundle is not representable. The same applies to $F$. As in §8.2, both bundles MUST have at least one summand.
 
@@ -505,47 +515,47 @@ An implementation MUST reject at least the following malformed conditions:
 - a locus part containing any number of `-` characters other than 0 or 2;
 - a degeneracy locus with an empty `E`, `F`, or `k` segment;
 - a rank bound `k` with leading zeros (a multi-character `k` whose first character has Base62 value 0);
-- a label that is not in canonical form: after decoding a label into its structured representation, re-encoding MUST reproduce the original label byte for byte. This check implicitly rejects non-minimal encodings such as standard factors encoded in escape form, overlong descriptors, non-sorted summand order, and ambient-factor orders that do not match the canonical graph certificate of §6.
+- a label that is not in canonical form: after decoding a label into its structured representation, re-encoding MUST reproduce the original label byte for byte. This check implicitly rejects non-minimal encodings such as standard factors encoded in escape form, overlong descriptors, non-sorted summand order, and ambient-factor orders that do not match the coefficient-row certificate of §6.
 
 ## 11. Worked examples
 
 ### 11.1 Zero locus examples
 
-| Object                                                                  | Bundle                                     | Label            |
-| ----------------------------------------------------------------------- | ------------------------------------------ | ---------------- |
-| $\mathbb{P}^1 = \mathrm{A}_1 / \mathrm{P}_1$                            | ambient only                               | `1`              |
-| $\mathbb{P}^1$                                                          | $\mathcal{O}(1)$                           | `1.0`            |
-| $\mathbb{P}^1$                                                          | $\mathcal{O}(-1)$                          | `1.z220`         |
-| $\mathbb{P}^1$                                                          | $\mathcal{O} \oplus \mathcal{O}(1)$        | `1.0x1`          |
-| $\mathbb{P}^1$                                                          | $\mathcal{O}(1) \oplus \mathcal{O}(1)$     | `1.00`           |
-| $\mathbb{P}^3 = \mathrm{A}_3 / \mathrm{P}_1$                            | ambient only                               | `30`             |
-| $\mathbb{P}^3$                                                          | $\mathcal{O}(1)$                           | `30.0`           |
-| $\mathbb{P}^3$                                                          | $\mathcal{O}(-1)$                          | `30.z2020`       |
-| $\mathbb{P}^3$                                                          | $\mathcal{O}(1) \oplus \mathcal{O}(0,0,1)$ | `30.02`          |
-| $\mathrm{Gr}(2,4) = \mathrm{A}_3 / \mathrm{P}_2$                        | ambient only                               | `31`             |
-| $\mathrm{Gr}(2,4)$                                                      | weight $(1,0,0)$                           | `31.0`           |
-| $\mathrm{Gr}(3,6) = \mathrm{A}_5 / \mathrm{P}_3$                        | ambient only                               | `53`             |
-| $\mathrm{Fl}(1,3,4) = \mathrm{A}_3 / \mathrm{P}_{\{1,3\}}$              | ambient only                               | `34`             |
-| $\mathrm{Q}^5 = \mathrm{B}_3 / \mathrm{P}_1$                            | ambient only                               | `H0`             |
-| $\mathrm{Q}^5$                                                          | weight $(1,0,0)$                           | `H0.0`           |
-| $\mathrm{B}_5 / \mathrm{B} = \mathrm{B}_5 / \mathrm{P}_{\{1,2,3,4,5\}}$ | ambient only                               | `JU`             |
-| $\mathrm{OGr}^{+}(5,10) = \mathrm{D}_5 / \mathrm{P}_5$                  | ambient only                               | `iF`             |
-| $\mathrm{Freudenthal\ variety} = \mathrm{E}_7 / \mathrm{P}_7$           | ambient only                               | `u11`            |
-| $\mathrm{A}_{15} / \mathrm{P}_1$                                        | ambient only                               | `F000`           |
-| $\mathrm{A}_{16} / \mathrm{P}_1$                                        | ambient only                               | `0A1G000`        |
-| $\mathrm{A}_{17} / \mathrm{P}_1$                                        | ambient only                               | `0A1H000`        |
-| $(\mathbb{P}^1)^5$                                                      | $\mathcal{O}(1,1,1,1,1)$                   | `11111.x6000`    |
-| $\mathbb{P}^1 \times \mathbb{P}^1$                                      | $\mathcal{O}(1,1)$                         | `11.E`           |
-| $\mathbb{P}^1 \times \mathbb{P}^1$                                      | $\mathcal{O}(1,0) \oplus \mathcal{O}(0,1)$ | `11.01`          |
+| Object                                                                  | Bundle                                     | Label         |
+| ----------------------------------------------------------------------- | ------------------------------------------ | ------------- |
+| $\mathbb{P}^1 = \mathrm{A}_1 / \mathrm{P}_1$                            | ambient only                               | `1`           |
+| $\mathbb{P}^1$                                                          | $\mathcal{O}(1)$                           | `1.0`         |
+| $\mathbb{P}^1$                                                          | $\mathcal{O}(-1)$                          | `1.z220`      |
+| $\mathbb{P}^1$                                                          | $\mathcal{O} \oplus \mathcal{O}(1)$        | `1.x10`       |
+| $\mathbb{P}^1$                                                          | $\mathcal{O}(1) \oplus \mathcal{O}(1)$     | `1.00`        |
+| $\mathbb{P}^3 = \mathrm{A}_3 / \mathrm{P}_1$                            | ambient only                               | `30`          |
+| $\mathbb{P}^3$                                                          | $\mathcal{O}(1)$                           | `30.0`        |
+| $\mathbb{P}^3$                                                          | $\mathcal{O}(-1)$                          | `30.z2020`    |
+| $\mathbb{P}^3$                                                          | $\mathcal{O}(1) \oplus \mathcal{O}(0,0,1)$ | `30.20`       |
+| $\mathrm{Gr}(2,4) = \mathrm{A}_3 / \mathrm{P}_2$                        | ambient only                               | `31`          |
+| $\mathrm{Gr}(2,4)$                                                      | weight $(1,0,0)$                           | `31.0`        |
+| $\mathrm{Gr}(3,6) = \mathrm{A}_5 / \mathrm{P}_3$                        | ambient only                               | `53`          |
+| $\mathrm{Fl}(1,3,4) = \mathrm{A}_3 / \mathrm{P}_{\{1,3\}}$              | ambient only                               | `34`          |
+| $\mathrm{Q}^5 = \mathrm{B}_3 / \mathrm{P}_1$                            | ambient only                               | `H0`          |
+| $\mathrm{Q}^5$                                                          | weight $(1,0,0)$                           | `H0.0`        |
+| $\mathrm{B}_5 / \mathrm{B} = \mathrm{B}_5 / \mathrm{P}_{\{1,2,3,4,5\}}$ | ambient only                               | `JU`          |
+| $\mathrm{OGr}^{+}(5,10) = \mathrm{D}_5 / \mathrm{P}_5$                  | ambient only                               | `iF`          |
+| $\mathrm{Freudenthal\ variety} = \mathrm{E}_7 / \mathrm{P}_7$           | ambient only                               | `u11`         |
+| $\mathrm{A}_{15} / \mathrm{P}_1$                                        | ambient only                               | `F000`        |
+| $\mathrm{A}_{16} / \mathrm{P}_1$                                        | ambient only                               | `0A1G000`     |
+| $\mathrm{A}_{17} / \mathrm{P}_1$                                        | ambient only                               | `0A1H000`     |
+| $(\mathbb{P}^1)^5$                                                      | $\mathcal{O}(1,1,1,1,1)$                   | `11111.x6000` |
+| $\mathbb{P}^1 \times \mathbb{P}^1$                                      | $\mathcal{O}(1,1)$                         | `11.E`        |
+| $\mathbb{P}^1 \times \mathbb{P}^1$                                      | $\mathcal{O}(1,0) \oplus \mathcal{O}(0,1)$ | `11.10`       |
 
 ### 11.2 Representative row modes
 
-| Row type | Example bundle row | Full label |
-| -------- | ------------------ | ---------- |
-| direct small-single | $\mathcal{O}(1)$ on $\mathbb{P}^1$ | `1.0` |
-| direct pair | $\mathcal{O}(1,1)$ on $\mathbb{P}^1 \times \mathbb{P}^1$ | `11.E` |
-| small positive sparse (`x`) | $\mathcal{O}(1,1,1,1,1)$ on $(\mathbb{P}^1)^5$ | `11111.x6000` |
-| generic signed sparse (`z`) | $\mathcal{O}(-1)$ on $\mathbb{P}^1$ | `1.z220` |
+| Row type                    | Example bundle row                                       | Full label    |
+| --------------------------- | -------------------------------------------------------- | ------------- |
+| direct small-single         | $\mathcal{O}(1)$ on $\mathbb{P}^1$                       | `1.0`         |
+| direct pair                 | $\mathcal{O}(1,1)$ on $\mathbb{P}^1 \times \mathbb{P}^1$ | `11.E`        |
+| small positive sparse (`x`) | $\mathcal{O}(1,1,1,1,1)$ on $(\mathbb{P}^1)^5$           | `11111.x6000` |
+| generic signed sparse (`z`) | $\mathcal{O}(-1)$ on $\mathbb{P}^1$                      | `1.z220`      |
 
 The examples
 
@@ -556,12 +566,12 @@ The examples
 
 ### 11.3 Degeneracy locus examples
 
-| Object                             | $E$                                    | $F$                | $k$ | Label          |
-| ---------------------------------- | -------------------------------------- | ------------------ | --- | -------------- |
-| $\mathbb{P}^1$                     | $\mathcal{O}(1)$                       | $\mathcal{O}(1)$   | 0   | `1.0-0-0`      |
-| $\mathbb{P}^1$                     | $\mathcal{O}(-1)$                      | $\mathcal{O}(1)$   | 0   | `1.z220-0-0`   |
-| $\mathbb{P}^1 \times \mathbb{P}^1$ | $\mathcal{O}(1,0)$                     | $\mathcal{O}(0,1)$ | 0   | `11.1-0-0`     |
-| $\mathbb{P}^3$                     | $\mathcal{O}(1) \oplus \mathcal{O}(1)$ | $\mathcal{O}(2)$   | 1   | `30.00-3-1`    |
+| Object                             | $E$                                    | $F$                | $k$ | Label        |
+| ---------------------------------- | -------------------------------------- | ------------------ | --- | ------------ |
+| $\mathbb{P}^1$                     | $\mathcal{O}(1)$                       | $\mathcal{O}(1)$   | 0   | `1.0-0-0`    |
+| $\mathbb{P}^1$                     | $\mathcal{O}(-1)$                      | $\mathcal{O}(1)$   | 0   | `1.z220-0-0` |
+| $\mathbb{P}^1 \times \mathbb{P}^1$ | $\mathcal{O}(1,0)$                     | $\mathcal{O}(0,1)$ | 0   | `11.1-0-0`   |
+| $\mathbb{P}^3$                     | $\mathcal{O}(1) \oplus \mathcal{O}(1)$ | $\mathcal{O}(2)$   | 1   | `30.00-3-1`  |
 
 ## 12. Version history
 
@@ -571,3 +581,4 @@ The examples
 - **v2.1** — Added signed bundle coefficients. A summand row with at least one negative coefficient is encoded with the signed-row marker `1` followed by the usual base descriptor and packed ZigZag-transformed digits. Because v2.0 decoders rejected `1` as a bundle base character, signed-row labels are reliably rejected by v2.0 decoders.
 - **v2.2** — Replaced the v2.1 equal-factor permutation minimum by the graph-certificate canonicalization rule of §6. This change requires no new syntax and no external canonization tool, but it does change some canonical labels relative to v2.1.
 - **v3** — Replaced the old dense/base-descriptor bundle-row encoding by the sparse row codec of §8. The ambient encoding, label syntax, and graph-certificate canonicalization are unchanged, but bundle rows now optimize for sparse supports with small positive values.
+- **v3.1** — Replaced the graph-certificate canonicalization by the coefficient-row multiset rule of §6. Equal ambient factors are disambiguated by lexicographically minimizing sorted flattened coefficient rows, and summands are emitted in coefficient-vector order rather than encoded-row-string order.

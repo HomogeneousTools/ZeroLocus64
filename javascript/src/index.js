@@ -771,185 +771,123 @@ function serializeWeights(weights) {
   return `[${weights.join(",")}]`;
 }
 
+function flatRow(row) {
+  return row.flat();
+}
+
+function compareIntegerArrays(left, right) {
+  const sharedLength = Math.min(left.length, right.length);
+  for (let index = 0; index < sharedLength; index += 1) {
+    if (left[index] < right[index]) {
+      return -1;
+    }
+    if (left[index] > right[index]) {
+      return 1;
+    }
+  }
+  return left.length - right.length;
+}
+
+function compareRowCertificates(left, right) {
+  const sharedLength = Math.min(left.length, right.length);
+  for (let index = 0; index < sharedLength; index += 1) {
+    const comparison = compareIntegerArrays(left[index], right[index]);
+    if (comparison !== 0) {
+      return comparison;
+    }
+  }
+  return left.length - right.length;
+}
+
+function compareCertificates(left, right) {
+  const sharedLength = Math.min(left.length, right.length);
+  for (let index = 0; index < sharedLength; index += 1) {
+    const comparison = compareRowCertificates(left[index], right[index]);
+    if (comparison !== 0) {
+      return comparison;
+    }
+  }
+  return left.length - right.length;
+}
+
+function permutations(values) {
+  if (values.length <= 1) {
+    return [values.slice()];
+  }
+  const result = [];
+  for (let index = 0; index < values.length; index += 1) {
+    const head = values[index];
+    const tail = values.slice(0, index).concat(values.slice(index + 1));
+    for (const permutation of permutations(tail)) {
+      result.push([head, ...permutation]);
+    }
+  }
+  return result;
+}
+
 function canonicalFactorOrder(factors, summands, summandsF) {
   if (factors.length < 2) {
     return Array.from({ length: factors.length }, (_, index) => index);
   }
-  const rowEntries = summands.map((row, index) => ["E", index, row]);
-  if (summandsF !== null) {
-    rowEntries.push(...summandsF.map((row, index) => ["F", index, row]));
+  const factorCodes = factors.map((factor) => encodeFactor(factor));
+  const blocks = [];
+  let start = 0;
+  for (let stop = 1; stop <= factors.length; stop += 1) {
+    if (stop === factors.length || factorCodes[stop] !== factorCodes[start]) {
+      if (stop - start > 1) {
+        blocks.push(
+          Array.from({ length: stop - start }, (_, index) => start + index),
+        );
+      }
+      start = stop;
+    }
   }
-  if (rowEntries.length === 0) {
+  if (blocks.length === 0) {
     return Array.from({ length: factors.length }, (_, index) => index);
   }
 
-  const rowOffset = factors.length;
-  const vertexColors = new Map();
-  const edgeLabels = new Map();
-  for (let index = 0; index < factors.length; index += 1) {
-    vertexColors.set(index, `F:${encodeFactor(factors[index])}`);
-  }
-  rowEntries.forEach(([bundleTag, _rowIndex, row], offset) => {
-    const vertex = rowOffset + offset;
-    vertexColors.set(vertex, `R:${bundleTag}`);
-    row.forEach((weights, factorIndex) => {
-      const label = serializeWeights(weights);
-      edgeLabels.set(`${factorIndex}:${vertex}`, label);
-      edgeLabels.set(`${vertex}:${factorIndex}`, label);
-    });
-  });
-
-  function cellKey(vertex, cell) {
-    return cell
-      .map((other) => edgeLabels.get(`${vertex}:${other}`) ?? "~")
-      .sort(compareLexicographic)
-      .join(";");
+  function rowCertificate(order, rows) {
+    return rows
+      .map((row) => flatRow(order.map((index) => row[index])))
+      .sort(compareIntegerArrays);
   }
 
-  function refine(partition) {
-    let current = partition;
-    for (;;) {
-      const updated = [];
-      let changed = false;
-      for (const cell of current) {
-        const buckets = new Map();
-        for (const vertex of cell) {
-          const signatureKey = [
-            vertexColors.get(vertex),
-            ...current.map((otherCell) => cellKey(vertex, otherCell)),
-          ].join("|");
-          const bucket = buckets.get(signatureKey);
-          if (bucket) {
-            bucket.push(vertex);
-          } else {
-            buckets.set(signatureKey, [vertex]);
-          }
-        }
-        if (buckets.size === 1) {
-          updated.push(cell);
-          continue;
-        }
-        changed = true;
-        const ordered = [...buckets.entries()].sort((left, right) =>
-          compareLexicographic(left[0], right[0]),
-        );
-        for (const [, bucket] of ordered) {
-          updated.push(bucket);
-        }
-      }
-      if (!changed) {
-        return current;
-      }
-      current = updated;
+  function certificate(order) {
+    const parts = [rowCertificate(order, summands)];
+    if (summandsF !== null) {
+      parts.push(rowCertificate(order, summandsF));
     }
+    return parts;
   }
 
-  function targetCell(partition) {
-    let bestIndex = null;
-    let bestKey = null;
-    for (let index = 0; index < partition.length; index += 1) {
-      const cell = partition[index];
-      if (cell.length <= 1) {
-        continue;
-      }
-      const key = [cell.length, cell[0] < rowOffset ? 0 : 1, index];
-      if (
-        bestKey === null ||
-        key[0] < bestKey[0] ||
-        (key[0] === bestKey[0] &&
-          (key[1] < bestKey[1] ||
-            (key[1] === bestKey[1] && key[2] < bestKey[2])))
-      ) {
-        bestIndex = index;
-        bestKey = key;
-      }
-    }
-    return bestIndex;
-  }
-
-  function individualize(partition, cellIndex, chosen) {
-    const cell = partition[cellIndex];
-    const remainder = cell.filter((vertex) => vertex !== chosen);
-    const result = [...partition.slice(0, cellIndex), [chosen]];
-    if (remainder.length > 0) {
-      result.push(remainder);
-    }
-    result.push(...partition.slice(cellIndex + 1));
-    return result;
-  }
-
-  function certificate(partition) {
-    const ordered = partition.map((cell) => cell[0]);
-    const colors = ordered.map((vertex) => vertexColors.get(vertex));
-    const edges = [];
-    for (let leftIndex = 0; leftIndex < ordered.length; leftIndex += 1) {
-      for (
-        let rightIndex = leftIndex + 1;
-        rightIndex < ordered.length;
-        rightIndex += 1
-      ) {
-        edges.push(
-          edgeLabels.get(`${ordered[leftIndex]}:${ordered[rightIndex]}`) ?? "~",
-        );
-      }
-    }
-    return `${colors.join("|")}||${edges.join("|")}`;
-  }
-
-  const initialPartition = [];
-  const factorGroups = new Map();
-  for (let index = 0; index < factors.length; index += 1) {
-    const color = vertexColors.get(index);
-    const group = factorGroups.get(color);
-    if (group) {
-      group.push(index);
-    } else {
-      factorGroups.set(color, [index]);
-    }
-  }
-  for (const color of [...factorGroups.keys()].sort(compareLexicographic)) {
-    initialPartition.push(factorGroups.get(color));
-  }
-  const rowGroups = new Map();
-  for (let offset = 0; offset < rowEntries.length; offset += 1) {
-    const vertex = rowOffset + offset;
-    const color = vertexColors.get(vertex);
-    const group = rowGroups.get(color);
-    if (group) {
-      group.push(vertex);
-    } else {
-      rowGroups.set(color, [vertex]);
-    }
-  }
-  for (const color of [...rowGroups.keys()].sort(compareLexicographic)) {
-    initialPartition.push(rowGroups.get(color));
-  }
-
+  const blockPermutations = blocks.map((block) => permutations(block));
   let bestCertificate = null;
-  let bestOrder = Array.from({ length: factors.length }, (_, index) => index);
-
-  function search(partition) {
-    const refined = refine(partition);
-    const cellIndex = targetCell(refined);
-    if (cellIndex === null) {
-      const currentCertificate = certificate(refined);
+  let bestOrder = null;
+  function visitBlock(blockIndex, order) {
+    if (blockIndex === blocks.length) {
+      const currentCertificate = certificate(order);
       if (
         bestCertificate === null ||
-        compareLexicographic(currentCertificate, bestCertificate) < 0
+        compareCertificates(currentCertificate, bestCertificate) < 0
       ) {
         bestCertificate = currentCertificate;
-        bestOrder = refined
-          .map((cell) => cell[0])
-          .filter((vertex) => vertex < rowOffset);
+        bestOrder = order.slice();
       }
       return;
     }
-    for (const vertex of refined[cellIndex]) {
-      search(individualize(refined, cellIndex, vertex));
+    const block = blocks[blockIndex];
+    for (const permutation of blockPermutations[blockIndex]) {
+      const nextOrder = order.slice();
+      for (let index = 0; index < block.length; index += 1) {
+        nextOrder[block[index]] = permutation[index];
+      }
+      visitBlock(blockIndex + 1, nextOrder);
     }
   }
-
-  search(initialPartition);
+  visitBlock(
+    0,
+    Array.from({ length: factors.length }, (_, index) => index),
+  );
   return bestOrder;
 }
 
@@ -986,11 +924,6 @@ export function canonicalize(factors, summands, summandsF, k) {
     (sum, factor) => sum + factor.rank,
     0,
   );
-  const sortBySummandCode = (left, right) =>
-    compareLexicographic(
-      encodeSummand(left, totalDynkinRank),
-      encodeSummand(right, totalDynkinRank),
-    );
   const bestOrder = canonicalFactorOrder(
     orderedFactors,
     orderedSummands,
@@ -1004,9 +937,13 @@ export function canonicalize(factors, summands, summandsF, k) {
     orderedFactors,
     orderedSummands,
   );
-  orderedSummands.sort(sortBySummandCode);
+  orderedSummands.sort((left, right) =>
+    compareIntegerArrays(flatRow(left), flatRow(right)),
+  );
   if (isDegeneracy) {
-    orderedSummandsF.sort(sortBySummandCode);
+    orderedSummandsF.sort((left, right) =>
+      compareIntegerArrays(flatRow(left), flatRow(right)),
+    );
     return [orderedFactors, orderedSummands, orderedSummandsF, k];
   }
   return [orderedFactors, orderedSummands];

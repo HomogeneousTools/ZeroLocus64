@@ -2,7 +2,7 @@
 
 newPackage(
     "ZeroLocus62",
-    Version => "3.0.0",
+    Version => "3.1.0",
     Date => "April 24, 2026",
     Authors => {
         {Name => "Pieter Belmans", Email => "pieterbelmans@gmail.com"}},
@@ -711,13 +711,40 @@ reorder = (order, ambientFactors, summands) -> {
 
 sortRows = (rows, totalDynkinRank) -> (
     apply(
-        sort(apply(rows, row -> {encodeSummand(row, totalDynkinRank), row})),
+        sort(apply(rows, row -> {flatRow row, row})),
         pair -> pair#1)
     )
 
 -------------------------------------------------------------------------
--- Graph-style canonicalization retained in v3.
+-- Coefficient-row canonicalization for v3.1.
 -------------------------------------------------------------------------
+
+flatRow = row -> (
+    result := {};
+    for weights in row do for coefficient in weights do
+        result = append(result, coefficient);
+    result
+    )
+
+rowPermutations = values -> (
+    if #values <= 1 then return {values};
+
+    result := {};
+    for i from 0 to #values - 1 do (
+        tail := {};
+        for j from 0 to #values - 1 do
+            if j =!= i then tail = append(tail, values#j);
+        for permutation in rowPermutations tail do
+            result = append(result, prepend(values#i, permutation));
+        );
+    result
+    )
+
+replaceBlock = (order, block, permutation) -> (
+    replacements := new MutableHashTable;
+    for i from 0 to #block - 1 do replacements#(block#i) = permutation#i;
+    apply(#order, index -> if replacements#?index then replacements#index else order#index)
+    )
 
 serializeWeights = weights -> (
     inner := "";
@@ -742,169 +769,49 @@ joinStrings = (sep, lst) -> (
 canonicalFactorOrder = (ambientFactors, summands, summandsF) -> (
     if #ambientFactors < 2 then return apply(#ambientFactors, index -> index);
 
-    rowEntries := {};
-    for i from 0 to #summands - 1 do
-        rowEntries = append(rowEntries, ("E", i, summands#i));
-    if summandsF =!= null then
-        for i from 0 to #summandsF - 1 do
-            rowEntries = append(rowEntries, ("F", i, summandsF#i));
-
-    if #rowEntries == 0 then return apply(#ambientFactors, index -> index);
-
-    rowOffset := #ambientFactors;
-    vertexColors := new MutableHashTable;
-    edgeLabels := new MutableHashTable;
-
-    for index from 0 to #ambientFactors - 1 do
-        vertexColors#index = "F:" | encodeFactor(ambientFactors#index);
-
-    for offset from 0 to #rowEntries - 1 do (
-        entry := rowEntries#offset;
-        bundleTag := entry#0;
-        row := entry#2;
-        vertex := rowOffset + offset;
-        vertexColors#vertex = "R:" | bundleTag;
-
-        for factorIndex from 0 to #row - 1 do (
-            label := serializeWeights(row#factorIndex);
-            edgeLabels#(factorIndex, vertex) = label;
-            edgeLabels#(vertex, factorIndex) = label;
+    factorCodes := apply(ambientFactors, ambientFactor -> encodeFactor ambientFactor);
+    blocks := {};
+    start := 0;
+    for stop from 1 to #ambientFactors do (
+        if stop == #ambientFactors or factorCodes#stop != factorCodes#start then (
+            if stop - start > 1 then blocks = append(blocks, toList(start .. (stop - 1)));
+            start = stop;
             );
         );
+    if #blocks == 0 then return apply(#ambientFactors, index -> index);
 
-    cellKey := (vertex, cell) -> (
-        labels := apply(cell, other ->
-            if edgeLabels#?(vertex, other) then edgeLabels#(vertex, other) else "~");
-        joinStrings(";", sort labels)
+    rowCertificate := (order, rows) -> (
+        sort apply(rows, row -> flatRow apply(order, index -> row#index))
         );
 
-    refine := partition -> (
-        current := partition;
-        changed := true;
-
-        while changed do (
-            changed = false;
-            updated := {};
-
-            for cell in current do (
-                buckets := new MutableHashTable;
-
-                for vertex in cell do (
-                    sig := joinStrings("|",
-                        join({vertexColors#vertex},
-                            apply(current, otherCell -> cellKey(vertex, otherCell))));
-                    if not buckets#?sig then buckets#sig = {};
-                    buckets#sig = append(buckets#sig, vertex);
-                    );
-
-                if #(keys buckets) == 1 then
-                    updated = append(updated, cell)
-                else (
-                    changed = true;
-                    for s in sort keys buckets do
-                        updated = append(updated, buckets#s);
-                    );
-                );
-
-            current = updated;
-            );
-
-        current
+    certFn := order -> (
+        if summandsF === null
+        then {rowCertificate(order, summands)}
+        else {rowCertificate(order, summands), rowCertificate(order, summandsF)}
         );
 
-    targetCell := partition -> (
-        bestIndex := null;
-        bestKey := null;
-
-        for index from 0 to #partition - 1 do (
-            cell := partition#index;
-            if #cell <= 1 then continue;
-            isRowCell := if cell#0 < rowOffset then 0 else 1;
-            key := (#cell, isRowCell, index);
-
-            if bestKey === null or key < bestKey then (
-                bestKey = key;
-                bestIndex = index;
-                );
-            );
-
-        bestIndex
-        );
-
-    individualize := (partition, cellIndex, chosen) -> (
-        cell := partition#cellIndex;
-        remainder := select(cell, v -> v != chosen);
-        result := {};
-
-        for i from 0 to cellIndex - 1 do result = append(result, partition#i);
-        result = append(result, {chosen});
-        if #remainder > 0 then result = append(result, remainder);
-        for i from cellIndex + 1 to #partition - 1 do result = append(result, partition#i);
-
-        result
-        );
-
-    certFn := partition -> (
-        ordered := apply(partition, cell -> cell#0);
-        colors := joinStrings("|", apply(ordered, v -> vertexColors#v));
-        edges := {};
-
-        for li from 0 to #ordered - 1 do
-            for ri from li + 1 to #ordered - 1 do (
-                key := (ordered#li, ordered#ri);
-                edges = append(edges,
-                    if edgeLabels#?key then edgeLabels#key else "~");
-                );
-
-        colors | "||" | joinStrings("|", edges)
-        );
-
-    initialPartition := {};
-    factorGroupsHT := new MutableHashTable;
-
-    for index from 0 to #ambientFactors - 1 do (
-        color := vertexColors#index;
-        if not factorGroupsHT#?color then factorGroupsHT#color = {};
-        factorGroupsHT#color = append(factorGroupsHT#color, index);
-        );
-
-    for color in sort keys factorGroupsHT do
-        initialPartition = append(initialPartition, factorGroupsHT#color);
-
-    rowGroupsHT := new MutableHashTable;
-
-    for offset from 0 to #rowEntries - 1 do (
-        vertex := rowOffset + offset;
-        color := vertexColors#vertex;
-        if not rowGroupsHT#?color then rowGroupsHT#color = {};
-        rowGroupsHT#color = append(rowGroupsHT#color, vertex);
-        );
-
-    for color in sort keys rowGroupsHT do
-        initialPartition = append(initialPartition, rowGroupsHT#color);
-
+    blockPermutations := apply(blocks, block -> rowPermutations block);
     bestCertificate := null;
     bestOrder := apply(#ambientFactors, index -> index);
 
-    search := null;
-    search = currPartition -> (
-        refined := refine currPartition;
-        ci := targetCell refined;
-
-        if ci === null then (
-            cert := certFn refined;
+    visit := null;
+    visit = (blockIndex, order) -> (
+        if blockIndex >= #blocks then (
+            cert := certFn order;
             if bestCertificate === null or cert < bestCertificate then (
                 bestCertificate = cert;
-                bestOrder = select(apply(refined, cell -> cell#0), v -> v < rowOffset);
+                bestOrder = order;
                 );
-            )
-        else (
-            for vertex in (refined#ci) do
-                search(individualize(refined, ci, vertex));
+            return null;
+            );
+
+        block := blocks#blockIndex;
+        for permutation in blockPermutations#blockIndex do (
+            visit(blockIndex + 1, replaceBlock(order, block, permutation));
             );
         );
 
-    search initialPartition;
+    visit(0, apply(#ambientFactors, index -> index));
     bestOrder
     )
 
@@ -1093,7 +1000,7 @@ Node
    ZeroLocus62 label codec for flag-variety bundles
   Description
    Text
-    The package implements the ZeroLocus62 v3 wire format, including sparse
+    The package implements the ZeroLocus62 v3.1 wire format, including sparse
     bundle rows, canonicalization, and degeneracy loci.
 ///
 
@@ -1116,6 +1023,15 @@ TEST ///
     demoFactors = {Factor("A", 1, 1), Factor("A", 1, 1)};
 
     assert( encodeLabel(demoFactors, {{{0}, {-1}}, {{-1}, {0}}}) == "11.z2020z2120" );
+///
+
+TEST ///
+    assert( encodeLabel({Factor("A", 1, 1)}, {{{0}}, {{1}}}) == "1.x10" );
+    assert( encodeLabel({Factor("A", 3, 1)}, {{{1, 0, 0}}, {{0, 0, 1}}}) == "30.20" );
+    assert( encodeLabel({Factor("A", 1, 1), Factor("A", 1, 1)}, {{{1}, {0}}, {{0}, {1}}}) == "11.10" );
+    assert( encodeLabel({Factor("A", 1, 1), Factor("A", 1, 1), Factor("A", 2, 1)}, {{{1}, {0}, {0, 1}}, {{0}, {1}, {1, 0}}}) == "1120.WT" );
+    repeatedRow = {{0}, {0}, {1, 0, 0, 0, 0, 0}};
+    assert( encodeLabel({Factor("A", 1, 1), Factor("A", 1, 1), Factor("B", 6, 1)}, apply(9, i -> repeatedRow)) == "11K00.222222222" );
 ///
 
 TEST ///
