@@ -1,0 +1,19 @@
+name: Notify dependents
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  notify-partial-flag-varieties:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch PartialFlagVarieties.jl tests
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          repository: HomogeneousTools/PartialFlagVarieties.jl
+          event-type: zerolocus62-updated
+          client-payload: >-
+            {"sha":"${{ github.sha }}","run_id":"${{ github.run_id }}"}
