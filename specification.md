@@ -1,8 +1,8 @@
-# ZeroLocus62 format specification v3.1
+# ZeroLocus62 format specification v3.1.1
 
 ## Status
 
-This document defines Version 3.1 of the ZeroLocus62 encoding format for zero loci and degeneracy loci of completely reducible vector bundles on partial flag varieties. It is intended to be read as an RFC-like specification for the wire format and canonicalization rules.
+This document defines Specification Version 3.1.1 of ZeroLocus62. The wire format and canonicalization rule remain the v3.1 format for zero loci and degeneracy loci of completely reducible vector bundles on partial flag varieties; v3.1.1 clarifies exact implementation requirements for that rule. It is intended to be read as an RFC-like specification for the wire format and canonicalization rules.
 
 ## 1. Conventions
 
@@ -186,7 +186,15 @@ Consequently, a minimum certificate exists. If the minimum is achieved by more t
 
 Version 3.1 does not require canonical labels for row vertices. Direct summands form a multiset, so permuting equal rows has no observable effect and MUST NOT force any backtracking over indistinguishable row vertices.
 
-### 6.4 Ordering conventions
+### 6.4 Implementation notes
+
+For a one-bundle label with exactly one summand, the equal-factor rule has a simple exact fast path: after the initial ambient-factor sort, sort the factor slices inside each equal-factor block lexicographically. This produces the same minimum certificate as the full admissible-permutation rule because the row certificate contains only one flattened coefficient tuple.
+
+Implementations MUST NOT generalize that fast path to multiple summands by sorting each equal factor by a local column signature or by pruning solely on sorted row-prefix certificates. Row sorting can make a candidate with a larger one-column prefix produce a smaller full certificate after later coefficients are considered. For example, on `P^1 x P^1` with rows `(0,2)` and `(1,0)`, the true canonical order gives rows `(0,1)` and `(2,0)`, even though the opposite first-column prefix is lexicographically smaller.
+
+The reference implementations avoid eager factorial enumeration for the general case by dynamic programming over ordered row partitions. A partial factor order partitions each bundle's rows by their equal flattened prefix; for a candidate next factor, the implementation refines those row partitions and recursively chooses the best suffix. This is exact because, once a prefix partition is fixed, later lexicographic comparisons are made independently inside those ordered prefix classes before moving to later classes. Implementations MAY use any algorithm that returns the same minimum certificate, but SHOULD avoid enumerating all permutations of large equal-factor blocks.
+
+### 6.5 Ordering conventions
 
 String comparisons in this specification, including ambient factor sorting and row-code tie-breaking inside the row codec, use ascending code-unit order of encoded strings.
 
@@ -196,7 +204,7 @@ Because all 62 characters of the ZeroLocus62 alphabet are ASCII, the code-unit v
 
 Integer tuple comparisons in §6.2 use the ordinary integer order, not the encoded row-string order.
 
-### 6.5 Canonical validation
+### 6.6 Canonical validation
 
 A decoded label MUST be in canonical form.
 
@@ -582,3 +590,4 @@ The examples
 - **v2.2** — Replaced the v2.1 equal-factor permutation minimum by the graph-certificate canonicalization rule of §6. This change requires no new syntax and no external canonization tool, but it does change some canonical labels relative to v2.1.
 - **v3** — Replaced the old dense/base-descriptor bundle-row encoding by the sparse row codec of §8. The ambient encoding, label syntax, and graph-certificate canonicalization are unchanged, but bundle rows now optimize for sparse supports with small positive values.
 - **v3.1** — Replaced the graph-certificate canonicalization by the coefficient-row multiset rule of §6. Equal ambient factors are disambiguated by lexicographically minimizing sorted flattened coefficient rows, and summands are emitted in coefficient-vector order rather than encoded-row-string order.
+- **v3.1.1** — Clarified exact implementation requirements for the v3.1 canonicalization rule. In particular, the specification now records the exact one-summand fast path, forbids unsafe prefix-only pruning for multiple summands, and documents the dynamic-programming strategy used by the reference implementations. The wire format and normative v3.1 canonical rule are unchanged.

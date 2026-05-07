@@ -2,7 +2,7 @@
 
 newPackage(
     "ZeroLocus62",
-    Version => "3.1.0",
+    Version => "3.1.1",
     Date => "April 24, 2026",
     Authors => {
         {Name => "Pieter Belmans", Email => "pieterbelmans@gmail.com"}},
@@ -716,7 +716,7 @@ sortRows = (rows, totalDynkinRank) -> (
     )
 
 -------------------------------------------------------------------------
--- Coefficient-row canonicalization for v3.1.
+-- Coefficient-row canonicalization for the v3.1 rule, clarified in v3.1.1.
 -------------------------------------------------------------------------
 
 flatRow = row -> (
@@ -726,18 +726,21 @@ flatRow = row -> (
     result
     )
 
-rowPermutations = values -> (
-    if #values <= 1 then return {values};
+equalFactorBlocks = ambientFactors -> (
+    select(factorBlocks ambientFactors, block -> #block > 1)
+    )
 
-    result := {};
-    for i from 0 to #values - 1 do (
-        tail := {};
-        for j from 0 to #values - 1 do
-            if j =!= i then tail = append(tail, values#j);
-        for permutation in rowPermutations tail do
-            result = append(result, prepend(values#i, permutation));
+factorBlocks = ambientFactors -> (
+    factorCodes := apply(ambientFactors, ambientFactor -> encodeFactor ambientFactor);
+    blocks := {};
+    start := 0;
+    for stop from 1 to #ambientFactors do (
+        if stop == #ambientFactors or factorCodes#stop != factorCodes#start then (
+            blocks = append(blocks, toList(start .. (stop - 1)));
+            start = stop;
+            );
         );
-    result
+    blocks
     )
 
 replaceBlock = (order, block, permutation) -> (
@@ -766,53 +769,117 @@ joinStrings = (sep, lst) -> (
     result
     )
 
-canonicalFactorOrder = (ambientFactors, summands, summandsF) -> (
-    if #ambientFactors < 2 then return apply(#ambientFactors, index -> index);
+singleSummandFactorOrder = (ambientFactors, summand) -> (
+    order := apply(#ambientFactors, index -> index);
+    for block in equalFactorBlocks ambientFactors do (
+        sortedBlock := apply(sort(apply(block, index -> {summand#index, index})), pair -> pair#1);
+        order = replaceBlock(order, block, sortedBlock);
+        );
+    order
+    )
 
-    factorCodes := apply(ambientFactors, ambientFactor -> encodeFactor ambientFactor);
-    blocks := {};
-    start := 0;
-    for stop from 1 to #ambientFactors do (
-        if stop == #ambientFactors or factorCodes#stop != factorCodes#start then (
-            if stop - start > 1 then blocks = append(blocks, toList(start .. (stop - 1)));
-            start = stop;
+refineRowGroups = (groups, rows, factorIndex) -> (
+    refined := {};
+    for group in groups do (
+        pairs := sort apply(group, rowIndex -> {rows#rowIndex#factorIndex, rowIndex});
+        currentValue := null;
+        currentGroup := {};
+        for pair in pairs do (
+            if currentValue === null or pair#0 != currentValue then (
+                if currentValue =!= null then refined = append(refined, currentGroup);
+                currentValue = pair#0;
+                currentGroup = {pair#1};
+                )
+            else currentGroup = append(currentGroup, pair#1);
             );
+        if currentValue =!= null then refined = append(refined, currentGroup);
         );
-    if #blocks == 0 then return apply(#ambientFactors, index -> index);
+    refined
+    )
 
-    rowCertificate := (order, rows) -> (
-        sort apply(rows, row -> flatRow apply(order, index -> row#index))
+groupedSuffixCertificate = (order, groups, rows) -> (
+    certificate := {};
+    for group in groups do (
+        rowsInGroup := sort apply(
+            group,
+            rowIndex -> flatRow apply(order, index -> rows#rowIndex#index));
+        for row in rowsInGroup do certificate = append(certificate, row);
         );
+    certificate
+    )
 
-    certFn := order -> (
+columnSignature = (index, summands, summandsF) -> (
+    signature := {apply(summands, row -> row#index)};
+    if summandsF =!= null then signature = append(signature, apply(summandsF, row -> row#index));
+    signature
+    )
+
+canonicalFactorOrderDP = (ambientFactors, summands, summandsF) -> (
+    blocks := factorBlocks ambientFactors;
+    positionBlocks := new MutableHashTable;
+    for block in blocks do for position in block do positionBlocks#position = block;
+
+    initialGroups := {toList(0 .. (#summands - 1))};
+    initialGroupsF := if summandsF === null then null else {toList(0 .. (#summandsF - 1))};
+    memo := new MutableHashTable;
+
+    certFn := (order, groups, groupsF) -> (
         if summandsF === null
-        then {rowCertificate(order, summands)}
-        else {rowCertificate(order, summands), rowCertificate(order, summandsF)}
+        then {groupedSuffixCertificate(order, groups, summands)}
+        else {
+            groupedSuffixCertificate(order, groups, summands),
+            groupedSuffixCertificate(order, groupsF, summandsF)}
         );
 
-    blockPermutations := apply(blocks, block -> rowPermutations block);
-    bestCertificate := null;
-    bestOrder := apply(#ambientFactors, index -> index);
+    bestSuffix := null;
+    bestSuffix = (groups, groupsF, remaining) -> (
+        if #remaining == 0 then return {};
+        key := toString {groups, groupsF, remaining};
+        if memo#?key then return memo#key;
 
-    visit := null;
-    visit = (blockIndex, order) -> (
-        if blockIndex >= #blocks then (
-            cert := certFn order;
+        depth := #ambientFactors - #remaining;
+        block := positionBlocks#depth;
+        candidates := select(remaining, index -> member(index, block));
+        seenSignatures := new MutableHashTable;
+        bestOrder := null;
+        bestCertificate := null;
+        for candidate in candidates do (
+            signature := toString columnSignature(candidate, summands, summandsF);
+            if seenSignatures#?signature then continue;
+            seenSignatures#signature = true;
+            nextRemaining := select(remaining, index -> index =!= candidate);
+            nextGroups := refineRowGroups(groups, summands, candidate);
+            nextGroupsF :=
+                if summandsF === null
+                then null
+                else refineRowGroups(groupsF, summandsF, candidate);
+            order := prepend(candidate, bestSuffix(nextGroups, nextGroupsF, nextRemaining));
+            cert := certFn(order, groups, groupsF);
             if bestCertificate === null or cert < bestCertificate then (
                 bestCertificate = cert;
                 bestOrder = order;
                 );
-            return null;
             );
 
-        block := blocks#blockIndex;
-        for permutation in blockPermutations#blockIndex do (
-            visit(blockIndex + 1, replaceBlock(order, block, permutation));
-            );
+        memo#key = bestOrder;
+        bestOrder
         );
 
-    visit(0, apply(#ambientFactors, index -> index));
-    bestOrder
+    bestSuffix(
+        initialGroups,
+        initialGroupsF,
+        apply(#ambientFactors, index -> index))
+    )
+
+canonicalFactorOrder = (ambientFactors, summands, summandsF) -> (
+    if #ambientFactors < 2 then return apply(#ambientFactors, index -> index);
+
+    if summandsF === null and #summands == 1 then
+        return singleSummandFactorOrder(ambientFactors, summands#0);
+
+    blocks := equalFactorBlocks ambientFactors;
+    if #blocks == 0 then return apply(#ambientFactors, index -> index);
+    return canonicalFactorOrderDP(ambientFactors, summands, summandsF);
     )
 
 canonicalizeCore = (ambientFactors, summands, summandsF, k) -> (
@@ -1000,8 +1067,9 @@ Node
    ZeroLocus62 label codec for flag-variety bundles
   Description
    Text
-    The package implements the ZeroLocus62 v3.1 wire format, including sparse
-    bundle rows, canonicalization, and degeneracy loci.
+    The package implements the ZeroLocus62 v3.1 wire format as clarified by the
+    v3.1.1 patch release, including sparse bundle rows, canonicalization, and
+    degeneracy loci.
 ///
 
 TEST ///
@@ -1032,6 +1100,18 @@ TEST ///
     assert( encodeLabel({Factor("A", 1, 1), Factor("A", 1, 1), Factor("A", 2, 1)}, {{{1}, {0}, {0, 1}}, {{0}, {1}, {1, 0}}}) == "1120.WT" );
     repeatedRow = {{0}, {0}, {1, 0, 0, 0, 0, 0}};
     assert( encodeLabel({Factor("A", 1, 1), Factor("A", 1, 1), Factor("B", 6, 1)}, apply(9, i -> repeatedRow)) == "11K00.222222222" );
+    assert( encodeLabel({Factor("A", 1, 1), Factor("A", 1, 1)}, {{{0}, {2}}, {{1}, {0}}}) == "11.12" );
+    assert( encodeLabel(apply(7, i -> Factor("A", 1, 1)), {{{1}, {0}, {0}, {0}, {0}, {0}, {0}}}) == "1111111.6" );
+    assert( encodeLabel(apply(7, i -> Factor("A", 1, 1)), {{{1}, {1}, {0}, {0}, {0}, {0}, {0}}}) == "1111111.wK" );
+    assert( encodeLabel(apply(7, i -> Factor("A", 1, 1)), {{{1}, {1}, {1}, {0}, {0}, {0}, {0}}}) == "1111111.x4Y00" );
+    assert( encodeLabel(apply(8, i -> Factor("A", 1, 1)), {{{1}, {0}, {0}, {0}, {0}, {0}, {0}, {0}}}) == "11111111.7" );
+    assert( encodeLabel(apply(8, i -> Factor("A", 1, 1)), {{{1}, {1}, {0}, {0}, {0}, {0}, {0}, {0}}}) == "11111111.wR" );
+    assert( encodeLabel(apply(8, i -> Factor("A", 1, 1)), {{{1}, {1}, {1}, {1}, {0}, {0}, {0}, {0}}}) == "11111111.x51700" );
+    repeatedFactors = join(apply(7, i -> Factor("A", 1, 1)), apply(7, i -> Factor("A", 2, 1)));
+    repeatedSummands = apply(5, rowOffset -> join(
+        apply(7, index -> {((index + rowOffset) % 3)}),
+        apply(7, index -> {((index + rowOffset) % 2), ((2 * index + rowOffset) % 3)})));
+    assert( encodeLabel(repeatedFactors, repeatedSummands) == "111111120202020202020.xC1MMr00RiIixD19wZ037VW6xE3B70037ZsUxF2SQ00LqYcaxE9v30HZiTl2" );
 ///
 
 TEST ///

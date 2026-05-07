@@ -130,6 +130,61 @@ def test_v31_equal_factor_blocks_use_row_multiset_certificate() -> None:
     assert encode_label(factors, summands) == "1120.WT"
 
 
+def test_v31_prefix_certificates_are_not_a_safe_pruning_key() -> None:
+    factors = [Factor("A", 1, 1), Factor("A", 1, 1)]
+    summands = [[[0], [2]], [[1], [0]]]
+
+    def row_certificate(order: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+        return tuple(
+            sorted(
+                tuple(coefficient for index in order for coefficient in row[index])
+                for row in summands
+            )
+        )
+
+    assert row_certificate((0,)) < row_certificate((1,))
+    assert row_certificate((1, 0)) < row_certificate((0, 1))
+    assert encode_label(factors, summands) == "11.12"
+    assert canonicalize(factors, summands)[1] == [[[0], [1]], [[2], [0]]]
+
+
+@pytest.mark.parametrize(
+    ("coefficients", "label"),
+    [
+        ([1, 0, 0, 0, 0, 0, 0], "1111111.6"),
+        ([1, 1, 0, 0, 0, 0, 0], "1111111.wK"),
+        ([1, 1, 1, 0, 0, 0, 0], "1111111.x4Y00"),
+        ([1, 0, 0, 0, 0, 0, 0, 0], "11111111.7"),
+        ([1, 1, 0, 0, 0, 0, 0, 0], "11111111.wR"),
+        ([1, 1, 1, 1, 0, 0, 0, 0], "11111111.x51700"),
+    ],
+)
+def test_v31_single_summand_equal_factor_blocks_are_canonical_fast(
+    coefficients: list[int], label: str
+) -> None:
+    factors = [Factor("A", 1, 1) for _ in coefficients]
+    summand = [[coefficient] for coefficient in coefficients]
+    assert encode_label(factors, [summand]) == label
+
+
+def test_v31_multi_row_repeated_factor_blocks_avoid_factorial_search() -> None:
+    factors = [Factor("A", 1, 1) for _ in range(7)] + [
+        Factor("A", 2, 1) for _ in range(7)
+    ]
+    summands = [
+        [[(index + row_offset) % 3] for index in range(7)]
+        + [
+            [(index + row_offset) % 2, (2 * index + row_offset) % 3]
+            for index in range(7)
+        ]
+        for row_offset in range(5)
+    ]
+    assert (
+        encode_label(factors, summands)
+        == "111111120202020202020.xC1MMr00RiIixD19wZ037VW6xE3B70037ZsUxF2SQ00LqYcaxE9v30HZiTl2"
+    )
+
+
 def test_v31_repeated_rows_do_not_create_graph_backtracking() -> None:
     factors = [Factor("A", 1, 1), Factor("A", 1, 1), Factor("B", 6, 1)]
     row = [[0], [0], [1, 0, 0, 0, 0, 0]]

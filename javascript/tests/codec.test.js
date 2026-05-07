@@ -167,6 +167,71 @@ test("v3.1 equal factor blocks use row multiset certificate", () => {
   );
 });
 
+function rowCertificate(order, rows) {
+  return rows
+    .map((row) => order.map((index) => row[index]).flat())
+    .sort((left, right) => {
+      for (let index = 0; index < left.length; index += 1) {
+        if (left[index] !== right[index]) {
+          return left[index] - right[index];
+        }
+      }
+      return 0;
+    });
+}
+
+test("v3.1 prefix certificates are not a safe pruning key", () => {
+  const factors = [new Factor("A", 1, 1), new Factor("A", 1, 1)];
+  const summands = [
+    [[0], [2]],
+    [[1], [0]],
+  ];
+  assert.deepEqual(rowCertificate([0], summands), [[0], [1]]);
+  assert.deepEqual(rowCertificate([1], summands), [[0], [2]]);
+  assert.deepEqual(rowCertificate([1, 0], summands), [
+    [0, 1],
+    [2, 0],
+  ]);
+  assert.equal(encodeLabel(factors, summands), "11.12");
+  assert.deepEqual(canonicalize(factors, summands)[1], [
+    [[0], [1]],
+    [[2], [0]],
+  ]);
+});
+
+for (const [coefficients, label] of [
+  [[1, 0, 0, 0, 0, 0, 0], "1111111.6"],
+  [[1, 1, 0, 0, 0, 0, 0], "1111111.wK"],
+  [[1, 1, 1, 0, 0, 0, 0], "1111111.x4Y00"],
+  [[1, 0, 0, 0, 0, 0, 0, 0], "11111111.7"],
+  [[1, 1, 0, 0, 0, 0, 0, 0], "11111111.wR"],
+  [[1, 1, 1, 1, 0, 0, 0, 0], "11111111.x51700"],
+]) {
+  test(`single-summand equal factor block is canonical: ${label}`, () => {
+    const factors = coefficients.map(() => new Factor("A", 1, 1));
+    const summand = coefficients.map((coefficient) => [coefficient]);
+    assert.equal(encodeLabel(factors, [summand]), label);
+  });
+}
+
+test("multi-row repeated factor blocks avoid factorial search", () => {
+  const factors = Array.from({ length: 7 }, () => new Factor("A", 1, 1)).concat(
+    Array.from({ length: 7 }, () => new Factor("A", 2, 1)),
+  );
+  const summands = Array.from({ length: 5 }, (_, rowOffset) =>
+    Array.from({ length: 7 }, (_, index) => [(index + rowOffset) % 3]).concat(
+      Array.from({ length: 7 }, (_, index) => [
+        (index + rowOffset) % 2,
+        (2 * index + rowOffset) % 3,
+      ]),
+    ),
+  );
+  assert.equal(
+    encodeLabel(factors, summands),
+    "111111120202020202020.xC1MMr00RiIixD19wZ037VW6xE3B70037ZsUxF2SQ00LqYcaxE9v30HZiTl2",
+  );
+});
+
 test("v3.1 repeated rows do not create graph backtracking", () => {
   const row = [[0], [0], [1, 0, 0, 0, 0, 0]];
   assert.equal(

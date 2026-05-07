@@ -810,25 +810,7 @@ function compareCertificates(left, right) {
   return left.length - right.length;
 }
 
-function permutations(values) {
-  if (values.length <= 1) {
-    return [values.slice()];
-  }
-  const result = [];
-  for (let index = 0; index < values.length; index += 1) {
-    const head = values[index];
-    const tail = values.slice(0, index).concat(values.slice(index + 1));
-    for (const permutation of permutations(tail)) {
-      result.push([head, ...permutation]);
-    }
-  }
-  return result;
-}
-
-function canonicalFactorOrder(factors, summands, summandsF) {
-  if (factors.length < 2) {
-    return Array.from({ length: factors.length }, (_, index) => index);
-  }
+function equalFactorBlocks(factors) {
   const factorCodes = factors.map((factor) => encodeFactor(factor));
   const blocks = [];
   let start = 0;
@@ -842,53 +824,201 @@ function canonicalFactorOrder(factors, summands, summandsF) {
       start = stop;
     }
   }
-  if (blocks.length === 0) {
-    return Array.from({ length: factors.length }, (_, index) => index);
-  }
+  return blocks;
+}
 
-  function rowCertificate(order, rows) {
-    return rows
-      .map((row) => flatRow(order.map((index) => row[index])))
-      .sort(compareIntegerArrays);
-  }
-
-  function certificate(order) {
-    const parts = [rowCertificate(order, summands)];
-    if (summandsF !== null) {
-      parts.push(rowCertificate(order, summandsF));
+function singleSummandFactorOrder(factors, summand) {
+  const order = Array.from({ length: factors.length }, (_, index) => index);
+  for (const block of equalFactorBlocks(factors)) {
+    const sortedBlock = block.slice().sort((left, right) => {
+      const comparison = compareIntegerArrays(summand[left], summand[right]);
+      return comparison === 0 ? left - right : comparison;
+    });
+    for (let index = 0; index < block.length; index += 1) {
+      order[block[index]] = sortedBlock[index];
     }
-    return parts;
+  }
+  return order;
+}
+
+function factorBlocks(factors) {
+  const factorCodes = factors.map((factor) => encodeFactor(factor));
+  const blocks = [];
+  let start = 0;
+  for (let stop = 1; stop <= factors.length; stop += 1) {
+    if (stop === factors.length || factorCodes[stop] !== factorCodes[start]) {
+      blocks.push(
+        Array.from({ length: stop - start }, (_, index) => start + index),
+      );
+      start = stop;
+    }
+  }
+  return blocks;
+}
+
+function refineRowGroups(groups, rows, factorIndex) {
+  const refined = [];
+  for (const group of groups) {
+    const buckets = new Map();
+    for (const rowIndex of group) {
+      const value = rows[rowIndex][factorIndex];
+      const key = JSON.stringify(value);
+      if (!buckets.has(key)) {
+        buckets.set(key, { value, rowIndices: [] });
+      }
+      buckets.get(key).rowIndices.push(rowIndex);
+    }
+    for (const { rowIndices } of [...buckets.values()].sort((left, right) =>
+      compareIntegerArrays(left.value, right.value),
+    )) {
+      refined.push(rowIndices);
+    }
+  }
+  return refined;
+}
+
+function emptySuffixCertificate(groups) {
+  return groups.flatMap((group) => group.map(() => []));
+}
+
+function prependSuffixCertificate(
+  factorIndex,
+  suffixCertificate,
+  groups,
+  rows,
+) {
+  const certificate = [];
+  let offset = 0;
+  for (const group of groups) {
+    const value = rows[group[0]][factorIndex];
+    for (const suffix of suffixCertificate.slice(
+      offset,
+      offset + group.length,
+    )) {
+      certificate.push(value.concat(suffix));
+    }
+    offset += group.length;
+  }
+  return certificate;
+}
+
+function columnSignature(index, summands, summandsF) {
+  const parts = [summands.map((row) => row[index])];
+  if (summandsF !== null) {
+    parts.push(summandsF.map((row) => row[index]));
+  }
+  return JSON.stringify(parts);
+}
+
+function canonicalFactorOrderDp(factors, summands, summandsF) {
+  const blocks = factorBlocks(factors);
+  const positionBlocks = Array.from({ length: factors.length });
+  for (const block of blocks) {
+    for (const position of block) {
+      positionBlocks[position] = block;
+    }
   }
 
-  const blockPermutations = blocks.map((block) => permutations(block));
-  let bestCertificate = null;
-  let bestOrder = null;
-  function visitBlock(blockIndex, order) {
-    if (blockIndex === blocks.length) {
-      const currentCertificate = certificate(order);
+  const initialGroups = [
+    Array.from({ length: summands.length }, (_, index) => index),
+  ];
+  const initialGroupsF =
+    summandsF === null
+      ? null
+      : [Array.from({ length: summandsF.length }, (_, index) => index)];
+  const memo = new Map();
+  const columnSignatures = Array.from({ length: factors.length }, (_, index) =>
+    columnSignature(index, summands, summandsF),
+  );
+
+  function bestSuffix(groups, groupsF, remaining) {
+    if (remaining.length === 0) {
+      const parts = [emptySuffixCertificate(groups)];
+      if (summandsF !== null) {
+        parts.push(emptySuffixCertificate(groupsF));
+      }
+      return [[], parts];
+    }
+    const key = JSON.stringify([groups, groupsF, remaining]);
+    const cached = memo.get(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const depth = factors.length - remaining.length;
+    const block = positionBlocks[depth];
+    const candidates = remaining.filter((index) => block.includes(index));
+    const seenSignatures = new Set();
+    let bestOrder = null;
+    let bestCertificate = null;
+    for (const candidate of candidates) {
+      const signature = columnSignatures[candidate];
+      if (seenSignatures.has(signature)) {
+        continue;
+      }
+      seenSignatures.add(signature);
+      const nextRemaining = remaining.filter((index) => index !== candidate);
+      const nextGroups = refineRowGroups(groups, summands, candidate);
+      const nextGroupsF =
+        summandsF === null
+          ? null
+          : refineRowGroups(groupsF, summandsF, candidate);
+      const [suffixOrder, suffixCertificate] = bestSuffix(
+        nextGroups,
+        nextGroupsF,
+        nextRemaining,
+      );
+      const currentCertificate = [
+        prependSuffixCertificate(
+          candidate,
+          suffixCertificate[0],
+          nextGroups,
+          summands,
+        ),
+      ];
+      if (summandsF !== null) {
+        currentCertificate.push(
+          prependSuffixCertificate(
+            candidate,
+            suffixCertificate[1],
+            nextGroupsF,
+            summandsF,
+          ),
+        );
+      }
       if (
         bestCertificate === null ||
         compareCertificates(currentCertificate, bestCertificate) < 0
       ) {
         bestCertificate = currentCertificate;
-        bestOrder = order.slice();
+        bestOrder = [candidate, ...suffixOrder];
       }
-      return;
     }
-    const block = blocks[blockIndex];
-    for (const permutation of blockPermutations[blockIndex]) {
-      const nextOrder = order.slice();
-      for (let index = 0; index < block.length; index += 1) {
-        nextOrder[block[index]] = permutation[index];
-      }
-      visitBlock(blockIndex + 1, nextOrder);
-    }
+
+    const result = [bestOrder, bestCertificate];
+    memo.set(key, result);
+    return result;
   }
-  visitBlock(
-    0,
+
+  return bestSuffix(
+    initialGroups,
+    initialGroupsF,
     Array.from({ length: factors.length }, (_, index) => index),
-  );
-  return bestOrder;
+  )[0];
+}
+
+function canonicalFactorOrder(factors, summands, summandsF) {
+  if (factors.length < 2) {
+    return Array.from({ length: factors.length }, (_, index) => index);
+  }
+  if (summandsF === null && summands.length === 1) {
+    return singleSummandFactorOrder(factors, summands[0]);
+  }
+  const blocks = equalFactorBlocks(factors);
+  if (blocks.length === 0) {
+    return Array.from({ length: factors.length }, (_, index) => index);
+  }
+  return canonicalFactorOrderDp(factors, summands, summandsF);
 }
 
 export function canonicalize(factors, summands, summandsF, k) {

@@ -4,7 +4,7 @@
 [![Docs](https://img.shields.io/badge/docs-zl62.homogeneous.tools-blue)](https://zl62.homogeneous.tools)
 [![Release](https://img.shields.io/github/v/release/HomogeneousTools/ZeroLocus62?color=green)](https://github.com/HomogeneousTools/ZeroLocus62/releases)
 
-ZeroLocus62 is a compact, canonical encoding for bundles, zero loci, and degeneracy loci of completely reducible vector bundles on partial flag varieties. A label with one bundle part can always be read as a canonical description of the underlying bundle itself, even when no zero-locus interpretation is intended or the bundle is not globally generated. This repository contains the v3.1 format specification together with independent Python, Julia, JavaScript, and Macaulay2 reference implementations, plus a small browser-based decoder website.
+ZeroLocus62 is a compact, canonical encoding for bundles, zero loci, and degeneracy loci of completely reducible vector bundles on partial flag varieties. A label with one bundle part can always be read as a canonical description of the underlying bundle itself, even when no zero-locus interpretation is intended or the bundle is not globally generated. This repository contains the v3.1.1 specification release for the v3.1 format together with independent Python, Julia, JavaScript, and Macaulay2 reference implementations, plus a small browser-based decoder website.
 
 The canonical format definition is [specification.md](specification.md). Treat that document as the source of truth for the v3.1 wire format, canonicalization rules, and worked examples.
 
@@ -20,7 +20,7 @@ The canonical format definition is [specification.md](specification.md). Treat t
 
 ## Reference API
 
-The reference implementations of the v3.1 format are:
+The reference implementations in the v3.1.1 release of the v3.1 format are:
 
 - [python/src/zerolocus62/](python/src/zerolocus62/)
 - [julia/src/](julia/src/)
@@ -151,3 +151,4 @@ Deployment to GitHub Pages is handled by [.github/workflows/pages.yml](.github/w
 
 - **v3** — Replaced the old dense/base-descriptor bundle-row format by a sparse row codec optimized for small positive coefficients. The ambient encoding and graph-certificate canonicalization are unchanged, but many bundle labels become substantially shorter.
 - **v3.1** — Replaced graph-certificate canonicalization with a coefficient-row multiset rule. Equal ambient factors are disambiguated by lexicographically minimizing sorted flattened coefficient rows, and summands are emitted in coefficient-vector order.
+- **v3.1.1** — Clarified the exact implementation requirements for the existing v3.1 canonicalization rule and updated the reference implementations accordingly. This patch release does not change the v3.1 wire format.

@@ -559,17 +559,195 @@ serialize_weights(weights::Vector{Int}) = "[" * join(string.(weights), ",") * "]
 
 flat_row(row) = Tuple(Iterators.flatten(row))
 
-function row_permutations(values::Vector{Int})
-    length(values) <= 1 && return [copy(values)]
-    result = Vector{Vector{Int}}()
-    for index in eachindex(values)
-        head = values[index]
-        tail = [values[i] for i in eachindex(values) if i != index]
-        for permutation in row_permutations(tail)
-            push!(result, vcat([head], permutation))
+function equal_factor_blocks(factors::Vector{Factor})
+    return [block for block in factor_blocks(factors) if length(block) > 1]
+end
+
+function factor_blocks(factors::Vector{Factor})
+    factor_codes = encode_factor.(factors)
+    blocks = Vector{Vector{Int}}()
+    start = 1
+    for stop = 2:(length(factors)+1)
+        if stop == length(factors) + 1 || factor_codes[stop] != factor_codes[start]
+            push!(blocks, collect(start:(stop-1)))
+            start = stop
         end
     end
-    return result
+    return blocks
+end
+
+function single_summand_factor_order(factors::Vector{Factor}, summand::Vector{Vector{Int}})
+    order = collect(eachindex(factors))
+    for block in equal_factor_blocks(factors)
+        sorted_block = sort(block; by = index -> (Tuple(summand[index]), index))
+        for (position, factor_index) in zip(block, sorted_block)
+            order[position] = factor_index
+        end
+    end
+    return order
+end
+
+function refine_row_groups(groups, column_values, factor_index::Int)
+    refined = Vector{Vector{Int}}()
+    for group in groups
+        buckets = Dict{Tuple,Vector{Int}}()
+        for row_index in group
+            key = Tuple(column_values[factor_index][row_index])
+            push!(get!(buckets, key, Int[]), row_index)
+        end
+        for key in sort(collect(keys(buckets)))
+            push!(refined, buckets[key])
+        end
+    end
+    return refined
+end
+
+function empty_suffix_certificate(groups)
+    certificate = Vector{Vector{Int}}()
+    for group in groups
+        for _ in group
+            push!(certificate, Int[])
+        end
+    end
+    return certificate
+end
+
+function prepend_suffix_certificate(
+    factor_index::Int,
+    suffix_certificate,
+    groups,
+    column_values,
+)
+    certificate = Vector{Vector{Int}}()
+    offset = 1
+    for group in groups
+        value = column_values[factor_index][first(group)]
+        for suffix in @view suffix_certificate[offset:(offset+length(group)-1)]
+            push!(certificate, vcat(value, suffix))
+        end
+        offset += length(group)
+    end
+    return certificate
+end
+
+function column_signature(
+    index::Int,
+    summands::Vector{Vector{Vector{Int}}},
+    summands_f::Union{Vector{Vector{Vector{Int}}},Nothing},
+)
+    parts = Any[Tuple(Tuple(row[index]) for row in summands)]
+    if summands_f !== nothing
+        push!(parts, Tuple(Tuple(row[index]) for row in summands_f))
+    end
+    return Tuple(parts)
+end
+
+function canonical_factor_order_dp(
+    factors::Vector{Factor},
+    summands::Vector{Vector{Vector{Int}}},
+    summands_f::Union{Vector{Vector{Vector{Int}}},Nothing},
+)
+    blocks = factor_blocks(factors)
+    position_blocks = Vector{Vector{Int}}(undef, length(factors))
+    for block in blocks
+        for position in block
+            position_blocks[position] = block
+        end
+    end
+
+    initial_groups = [collect(eachindex(summands))]
+    initial_groups_f = summands_f === nothing ? nothing : [collect(eachindex(summands_f))]
+    memo = Dict{Any,Tuple{Vector{Int},Any}}()
+    column_values = [
+        [summands[row_index][index] for row_index in eachindex(summands)] for
+        index in eachindex(factors)
+    ]
+    column_values_f =
+        summands_f === nothing ? nothing :
+        [
+            [summands_f[row_index][index] for row_index in eachindex(summands_f)] for
+            index in eachindex(factors)
+        ]
+    column_signatures =
+        [column_signature(index, summands, summands_f) for index in eachindex(factors)]
+
+    function groups_key(groups)
+        return Tuple(Tuple(group) for group in groups)
+    end
+
+    function best_suffix(groups, groups_f, remaining::Vector{Int})
+        if isempty(remaining)
+            if summands_f === nothing
+                return (Int[], (empty_suffix_certificate(groups),))
+            end
+            return (
+                Int[],
+                (empty_suffix_certificate(groups), empty_suffix_certificate(groups_f)),
+            )
+        end
+        key = (
+            groups_key(groups),
+            groups_f === nothing ? nothing : groups_key(groups_f),
+            Tuple(remaining),
+        )
+        if haskey(memo, key)
+            return memo[key]
+        end
+
+        depth = length(factors) - length(remaining) + 1
+        block = position_blocks[depth]
+        candidates = [index for index in remaining if index in block]
+        seen_signatures = Set{Any}()
+        best_order = nothing
+        best_certificate = nothing
+        for candidate in candidates
+            signature = column_signatures[candidate]
+            signature in seen_signatures && continue
+            push!(seen_signatures, signature)
+            next_remaining = [index for index in remaining if index != candidate]
+            next_groups = refine_row_groups(groups, column_values, candidate)
+            next_groups_f =
+                summands_f === nothing ? nothing :
+                refine_row_groups(groups_f, column_values_f, candidate)
+            suffix_order, suffix_certificate =
+                best_suffix(next_groups, next_groups_f, next_remaining)
+            current_certificate = if summands_f === nothing
+                (
+                    prepend_suffix_certificate(
+                        candidate,
+                        suffix_certificate[1],
+                        next_groups,
+                        column_values,
+                    ),
+                )
+            else
+                (
+                    prepend_suffix_certificate(
+                        candidate,
+                        suffix_certificate[1],
+                        next_groups,
+                        column_values,
+                    ),
+                    prepend_suffix_certificate(
+                        candidate,
+                        suffix_certificate[2],
+                        next_groups_f,
+                        column_values_f,
+                    ),
+                )
+            end
+            if best_certificate === nothing || current_certificate < best_certificate
+                best_certificate = current_certificate
+                best_order = vcat([candidate], suffix_order)
+            end
+        end
+
+        result = (best_order, best_certificate)
+        memo[key] = result
+        return result
+    end
+
+    return best_suffix(initial_groups, initial_groups_f, collect(eachindex(factors)))[1]
 end
 
 function canonical_factor_order(
@@ -578,55 +756,12 @@ function canonical_factor_order(
     summands_f::Union{Vector{Vector{Vector{Int}}},Nothing},
 )
     length(factors) < 2 && return collect(eachindex(factors))
-    factor_codes = encode_factor.(factors)
-    blocks = Vector{Vector{Int}}()
-    start = 1
-    for stop = 2:(length(factors)+1)
-        if stop == length(factors) + 1 || factor_codes[stop] != factor_codes[start]
-            if stop - start > 1
-                push!(blocks, collect(start:(stop-1)))
-            end
-            start = stop
-        end
+    if summands_f === nothing && length(summands) == 1
+        return single_summand_factor_order(factors, summands[1])
     end
+    blocks = equal_factor_blocks(factors)
     isempty(blocks) && return collect(eachindex(factors))
-
-    function row_certificate(order, rows)
-        return Tuple(sort([flat_row([row[index] for index in order]) for row in rows]))
-    end
-
-    function certificate(order)
-        if summands_f === nothing
-            return (row_certificate(order, summands),)
-        end
-        return (row_certificate(order, summands), row_certificate(order, summands_f))
-    end
-
-    block_permutations = row_permutations.(blocks)
-    best_certificate = nothing
-    best_order = collect(eachindex(factors))
-
-    function visit(block_index::Int, order::Vector{Int})
-        if block_index > length(blocks)
-            current_certificate = certificate(order)
-            if best_certificate === nothing || current_certificate < best_certificate
-                best_certificate = current_certificate
-                best_order = copy(order)
-            end
-            return
-        end
-        block = blocks[block_index]
-        for permutation in block_permutations[block_index]
-            next_order = copy(order)
-            for (position, factor_index) in zip(block, permutation)
-                next_order[position] = factor_index
-            end
-            visit(block_index + 1, next_order)
-        end
-    end
-
-    visit(1, collect(eachindex(factors)))
-    return best_order
+    return canonical_factor_order_dp(factors, summands, summands_f)
 end
 
 """

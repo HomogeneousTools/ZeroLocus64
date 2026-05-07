@@ -136,6 +136,43 @@ end
         [Factor('A', 1, 1), Factor('A', 1, 1), Factor('B', 6, 1)],
         [deepcopy(row) for _ = 1:9],
     ) == "11K00." * repeat("2", 9)
+
+    counterexample_factors = [Factor('A', 1, 1), Factor('A', 1, 1)]
+    counterexample_summands = [[[0], [2]], [[1], [0]]]
+    row_certificate(order, rows) =
+        sort([Tuple(Iterators.flatten([row[index] for index in order])) for row in rows])
+    @test row_certificate([1], counterexample_summands) <
+          row_certificate([2], counterexample_summands)
+    @test row_certificate([2, 1], counterexample_summands) <
+          row_certificate([1, 2], counterexample_summands)
+    @test encode_label(counterexample_factors, counterexample_summands) == "11.12"
+    @test canonicalize(counterexample_factors, counterexample_summands)[2] ==
+          [[[0], [1]], [[2], [0]]]
+
+    fast_cases = [
+        ([1, 0, 0, 0, 0, 0, 0], "1111111.6"),
+        ([1, 1, 0, 0, 0, 0, 0], "1111111.wK"),
+        ([1, 1, 1, 0, 0, 0, 0], "1111111.x4Y00"),
+        ([1, 0, 0, 0, 0, 0, 0, 0], "11111111.7"),
+        ([1, 1, 0, 0, 0, 0, 0, 0], "11111111.wR"),
+        ([1, 1, 1, 1, 0, 0, 0, 0], "11111111.x51700"),
+    ]
+    for (coefficients, label) in fast_cases
+        factors = [Factor('A', 1, 1) for _ in coefficients]
+        summand = [[coefficient] for coefficient in coefficients]
+        @test encode_label(factors, [summand]) == label
+    end
+
+    repeated_factors =
+        vcat([Factor('A', 1, 1) for _ = 1:7], [Factor('A', 2, 1) for _ = 1:7])
+    repeated_summands = [
+        vcat(
+            [[mod(index + row_offset, 3)] for index = 0:6],
+            [[mod(index + row_offset, 2), mod(2 * index + row_offset, 3)] for index = 0:6],
+        ) for row_offset = 0:4
+    ]
+    @test encode_label(repeated_factors, repeated_summands) ==
+          "111111120202020202020.xC1MMr00RiIixD19wZ037VW6xE3B70037ZsUxF2SQ00LqYcaxE9v30HZiTl2"
 end
 
 @testset "Curated Vectors" begin

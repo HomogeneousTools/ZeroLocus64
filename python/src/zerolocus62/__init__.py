@@ -1,7 +1,7 @@
 """ZeroLocus62 v3.1 canonical label codec for bundles, zero loci, and degeneracy loci.
 
-This module is the reference Python implementation of the ZeroLocus62 v3.1
-specification.
+This module is the reference Python implementation for the ZeroLocus62 v3.1.1
+release of the v3.1 specification.
 
 ZeroLocus62 uses the 62-character lexicographic alphabet
 ``0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz``
@@ -14,7 +14,6 @@ the two bundle parts of a degeneracy locus.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import product, permutations
 from math import comb
 
 STANDARD_NAME = "ZeroLocus62"
@@ -590,6 +589,171 @@ def _flat_row(row: list[list[int]]) -> tuple[int, ...]:
     return tuple(coefficient for weights in row for coefficient in weights)
 
 
+def _equal_factor_blocks(factors: list[Factor]) -> list[tuple[int, ...]]:
+    return [block for block in _factor_blocks(factors) if len(block) > 1]
+
+
+def _factor_blocks(factors: list[Factor]) -> list[tuple[int, ...]]:
+    codes = [_encode_factor(factor) for factor in factors]
+    blocks: list[tuple[int, ...]] = []
+    start = 0
+    for stop in range(1, len(factors) + 1):
+        if stop == len(factors) or codes[stop] != codes[start]:
+            blocks.append(tuple(range(start, stop)))
+            start = stop
+    return blocks
+
+
+def _single_summand_factor_order(
+    factors: list[Factor], summand: list[list[int]]
+) -> list[int]:
+    order = list(range(len(factors)))
+    for block in _equal_factor_blocks(factors):
+        sorted_block = sorted(block, key=lambda index: tuple(summand[index]))
+        for position, factor_index in zip(block, sorted_block, strict=True):
+            order[position] = factor_index
+    return order
+
+
+def _refine_row_groups(
+    groups: tuple[tuple[int, ...], ...], rows: list[list[list[int]]], factor_index: int
+) -> tuple[tuple[int, ...], ...]:
+    refined: list[tuple[int, ...]] = []
+    for group in groups:
+        buckets: dict[tuple[int, ...], list[int]] = {}
+        for row_index in group:
+            buckets.setdefault(tuple(rows[row_index][factor_index]), []).append(
+                row_index
+            )
+        refined.extend(tuple(buckets[key]) for key in sorted(buckets))
+    return tuple(refined)
+
+
+def _empty_suffix_certificate(
+    groups: tuple[tuple[int, ...], ...],
+) -> tuple[tuple[int, ...], ...]:
+    return tuple(() for group in groups for _ in group)
+
+
+def _prepend_suffix_certificate(
+    factor_index: int,
+    suffix_certificate: tuple[tuple[int, ...], ...],
+    groups: tuple[tuple[int, ...], ...],
+    rows: list[list[list[int]]],
+) -> tuple[tuple[int, ...], ...]:
+    certificate: list[tuple[int, ...]] = []
+    offset = 0
+    for group in groups:
+        value = tuple(rows[group[0]][factor_index])
+        for suffix in suffix_certificate[offset : offset + len(group)]:
+            certificate.append(value + suffix)
+        offset += len(group)
+    return tuple(certificate)
+
+
+def _column_signature(
+    index: int,
+    summands: list[list[list[int]]],
+    summands_f: list[list[list[int]]] | None,
+) -> tuple[tuple[tuple[int, ...], ...], ...]:
+    parts = [tuple(tuple(row[index]) for row in summands)]
+    if summands_f is not None:
+        parts.append(tuple(tuple(row[index]) for row in summands_f))
+    return tuple(parts)
+
+
+def _canonical_factor_order_dp(
+    factors: list[Factor],
+    summands: list[list[list[int]]],
+    summands_f: list[list[list[int]]] | None,
+) -> list[int]:
+    blocks = _factor_blocks(factors)
+    position_blocks = [None] * len(factors)
+    for block in blocks:
+        for position in block:
+            position_blocks[position] = block
+
+    initial_groups = tuple([tuple(range(len(summands)))])
+    initial_groups_f = (
+        None if summands_f is None else tuple([tuple(range(len(summands_f)))])
+    )
+    memo: dict[
+        tuple[
+            tuple[tuple[int, ...], ...],
+            tuple[tuple[int, ...], ...] | None,
+            tuple[int, ...],
+        ],
+        tuple[tuple[int, ...], tuple[tuple[tuple[int, ...], ...], ...]],
+    ] = {}
+    column_signatures = [
+        _column_signature(index, summands, summands_f) for index in range(len(factors))
+    ]
+
+    def best_suffix(
+        groups: tuple[tuple[int, ...], ...],
+        groups_f: tuple[tuple[int, ...], ...] | None,
+        remaining: tuple[int, ...],
+    ) -> tuple[tuple[tuple[int, ...], ...], ...]:
+        if not remaining:
+            parts = [_empty_suffix_certificate(groups)]
+            if summands_f is not None:
+                assert groups_f is not None
+                parts.append(_empty_suffix_certificate(groups_f))
+            return (), tuple(parts)
+        key = (groups, groups_f, remaining)
+        if key in memo:
+            return memo[key]
+
+        depth = len(factors) - len(remaining)
+        block = position_blocks[depth]
+        assert block is not None
+        candidates = [index for index in remaining if index in block]
+        seen_signatures: set[tuple[tuple[tuple[int, ...], ...], ...]] = set()
+        best_order: tuple[int, ...] | None = None
+        best_certificate: tuple[tuple[tuple[int, ...], ...], ...] | None = None
+        for candidate in candidates:
+            signature = column_signatures[candidate]
+            if signature in seen_signatures:
+                continue
+            seen_signatures.add(signature)
+            next_remaining = tuple(index for index in remaining if index != candidate)
+            next_groups = _refine_row_groups(groups, summands, candidate)
+            next_groups_f = (
+                None
+                if summands_f is None
+                else _refine_row_groups(groups_f, summands_f, candidate)  # type: ignore[arg-type]
+            )
+            suffix_order, suffix_certificate = best_suffix(
+                next_groups, next_groups_f, next_remaining
+            )
+            current_parts = [
+                _prepend_suffix_certificate(
+                    candidate, suffix_certificate[0], next_groups, summands
+                )
+            ]
+            if summands_f is not None:
+                assert next_groups_f is not None
+                current_parts.append(
+                    _prepend_suffix_certificate(
+                        candidate, suffix_certificate[1], next_groups_f, summands_f
+                    )
+                )
+            current_certificate = tuple(current_parts)
+            if best_certificate is None or current_certificate < best_certificate:
+                best_certificate = current_certificate
+                best_order = (candidate,) + suffix_order
+
+        assert best_order is not None
+        assert best_certificate is not None
+        result = (best_order, best_certificate)
+        memo[key] = result
+        return result
+
+    return list(
+        best_suffix(initial_groups, initial_groups_f, tuple(range(len(factors))))[0]
+    )
+
+
 def _canonical_factor_order(
     factors: list[Factor],
     summands: list[list[list[int]]],
@@ -597,40 +761,12 @@ def _canonical_factor_order(
 ) -> list[int]:
     if len(factors) < 2:
         return list(range(len(factors)))
-    codes = [_encode_factor(factor) for factor in factors]
-    blocks: list[tuple[int, ...]] = []
-    start = 0
-    for stop in range(1, len(factors) + 1):
-        if stop == len(factors) or codes[stop] != codes[start]:
-            if stop - start > 1:
-                blocks.append(tuple(range(start, stop)))
-            start = stop
+    if summands_f is None and len(summands) == 1:
+        return _single_summand_factor_order(factors, summands[0])
+    blocks = _equal_factor_blocks(factors)
     if not blocks:
         return list(range(len(factors)))
-
-    def candidate_orders():
-        base_order = list(range(len(factors)))
-        for choices in product(*(permutations(block) for block in blocks)):
-            order = base_order[:]
-            for block, choice in zip(blocks, choices, strict=True):
-                for position, factor_index in zip(block, choice, strict=True):
-                    order[position] = factor_index
-            yield order
-
-    def row_certificate(
-        order: list[int], rows: list[list[list[int]]]
-    ) -> tuple[tuple[int, ...], ...]:
-        return tuple(sorted(_flat_row([row[index] for index in order]) for row in rows))
-
-    def certificate(
-        order: list[int],
-    ) -> tuple[tuple[tuple[int, ...], ...], ...]:
-        parts = [row_certificate(order, summands)]
-        if summands_f is not None:
-            parts.append(row_certificate(order, summands_f))
-        return tuple(parts)
-
-    return min(candidate_orders(), key=certificate)
+    return _canonical_factor_order_dp(factors, summands, summands_f)
 
 
 def canonicalize(
